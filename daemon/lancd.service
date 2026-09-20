@@ -1,0 +1,12 @@
+[Unit]
+Description=LancBridge daemon — LANC control for Sony HXR-MC2500 (Companion integration)
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/python3 /opt/lancbridge/lancd.py --port /dev/ttyUSB0
+Restart=on-failure
+RestartSec=3
+User=pi
+
+[Install]
+WantedBy=multi-user.target
