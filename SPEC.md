@@ -1,6 +1,7 @@
 # LancBridge — PC → Sony HXR-MC2500 control over LANC (pbcc project)
 
 The MC2500's USB port is host-only, so PC control goes through the 2.5mm REMOTE
+> GPIO variant for a Raspberry Pi (no Arduino): see gpio/GPIO-SPEC.md.
 (LANC) jack, bridged by a microcontroller that presents USB-serial to the PC.
 
 ## The LANC (Control-L) protocol

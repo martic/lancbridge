@@ -1,0 +1,12 @@
+[Unit]
+Description=LancBridge GPIO — LANC control for Sony HXR-MC2500 (Companion on Pi)
+After=pigpiod.service network.target
+Requires=pigpiod.service
+
+[Service]
+ExecStart=/usr/bin/python3 /opt/lancbridge/lanc_gpio.py --gpio 17
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
