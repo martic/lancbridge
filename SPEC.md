@@ -1,9 +1,8 @@
-# LancBridge — PC → Sony HXR-MC2500 control over LANC (pbcc project)
+# LancBridge — Raspberry Pi → Sony HXR-MC2500 control over LANC (pbcc project)
 
-The MC2500's USB port is host-only, so PC control goes through the 2.5mm REMOTE
-(LANC) jack, bridged by a microcontroller that presents USB-serial to the PC.
-
-> **GPIO variant** (Raspberry Pi, no Arduino): see gpio/GPIO-SPEC.md.
+The MC2500's USB port is host-only, so PC control goes through the 2.5mm
+REMOTE (LANC) jack — driven directly by **GPIO on the Raspberry Pi that
+already runs Bitfocus Companion**. No Arduino.
 
 ## The LANC (Control-L) protocol
 
@@ -32,56 +31,65 @@ The MC2500's USB port is host-only, so PC control goes through the 2.5mm REMOTE
 | Power off       | `18 5E`   |                                |
 | Data screen     | `18 B4`   | toggle on LCD                  |
 
-The camera also streams status back in words 4–7 (mode, counter, tape/rec
-state) — the firmware forwards each full frame to USB so the daemon can decode
-recording state.
+The camera also streams status back in words 2–7 (mode, counter, tape/rec
+state) — the daemon reads those frames and exposes recording state.
 
-## Hardware
+## Why the Pi's audio jack can't do it
 
-Parts:
-- Arduino Nano / Uno (5V AVR — simplest; the Pico 3.3V variant needs the
-  divider below on the sense side only, transmit is identical open-drain)
-- 2.5 mm stereo plug (sleeve = GND, tip = +5V-ish supply from camera, ring = LANC signal)
-- 1 kΩ resistor (series, protect the MCU pin), optional 10 kΩ pull-down none needed
-- Optional: 100 µF cap across camera tip/sleeve if you want to power the Nano
-  from the camera's LANC supply (tip can be 5–9 V unregulated — use a
-  5 V regulator / Nano's VIN, not raw 5V pin)
+LANC is a bidirectional open-collector serial bus clocked by the camera: the
+camera pulses a start bit every frame (~20 ms) and the controller must sync to
+that before transmitting. The Pi's 3.5mm jack is analog audio *out only*
+(most models have no input at all), so the line can never be heard/synced, and
+analog audio can't carry open-collector signaling. It's not a serial port.
 
-Wiring (self-powered from PC USB — recommended, skip the regulator):
+## How the Pi does it
+
+- **Transmit**: a pre-built **pigpio waveform** (DMA-timed, exact 104 µs bits,
+  immune to Linux jitter) is fired when the camera's start bit is detected.
+- **Receive**: after the 2 command bytes are sent, the remaining 6 status words
+  are sampled mid-bit using pigpio's hardware-timed `gpioDelay`.
+- **Start-bit sync**: a falling-edge callback measures the low pulse; a pulse
+  of 1200–1500 µs is a frame start (normal data start bits are only ~104 µs).
+
+## Hardware — parts
+
+- Raspberry Pi (any model with GPIO; the one already running Companion)
+- 2.5 mm stereo plug (tip = camera power out, ring = LANC signal, sleeve = GND)
+- 1 kΩ resistor (series)
+- 1N4148 diode (a 1N4007 also works — see below)
+
+![GPIO → LANC wiring](wiring-diagram.png)
+
+Wiring:
 
 ```
-LANC plug ring (signal) ──[1kΩ]──┬── D2 (Nano)     ← read & open-drain transmit
-                                 │
-                              (MCU side)
-LANC plug sleeve (GND) ──────────┴── GND (Nano)   ← common ground REQUIRED
-LANC plug tip ── not connected (unless powering the Nano via regulator)
+LANC plug ring (signal) ──[1kΩ]──►|── GPIO17 (BCM)      diode: anode at GPIO side,
+LANC plug sleeve (GND) ───────────────── Pi GND          cathode at LANC side
+LANC plug tip ── unused (camera power out; do NOT feed into Pi)
 ```
 
-The MCU pin is switched between INPUT (line released — camera pulls it high)
-and OUTPUT-LOW (drive line low = send a 0 bit). Never drive HIGH. That emulates
-open-collector exactly and needs no transistor.
+The diode makes the Pi behave as true open-collector: GPIO **low** pulls the
+LANC line low through diode+resistor; GPIO **high** is blocked by the diode so
+the camera's own pull-up raises the line — push-pull waveform output can never
+fight the camera's line driver. Common ground (sleeve → Pi GND) is required.
+Keep the LANC cable away from mains leads; runs of 10 m+ are fine per the LANC
+spec.
 
-Pinout reference (Sony 2.5mm LANC): tip = power out (up to 100 mA), ring = LANC
-signal, sleeve = ground.
+Pin: **GPIO17 = physical pin 11** (same pin, two numbering schemes); ground on
+physical pin 9 or any GND. Changeable with `--gpio N`.
 
-## Firmware
+Diode choice: the 1N4148 (fast switching, low capacitance) is ideal; a 1N4007
+works fine at LANC speeds — its few-µs reverse recovery is negligible against
+the 104 µs bit time, and current is only a few mA. Orientation matters more
+than part choice: anode toward GPIO, cathode (bar) toward the LANC ring.
 
-`firmware/lanc_bridge.ino`:
-- Syncs to the camera's start bit, transmits the current 2 command bytes in
-  words 0–1, then reads the remaining 6 words and prints the full 8-byte frame
-  to USB serial at 115200 as `F 18 FF ... 8C 00 1F\n` per frame.
-- Serial commands from the PC (one per line): `rec`, `zoomin`, `zoomout`,
-  `zoomin_fast`, `zoomout_fast`, `focusnear`, `focusfar`, `aftoggle`,
-  `irisopen`, `irisclose`, `poweroff`, `display`, `stop` (clear command).
-- `rec`-style commands auto-send for 5 frames; `zoom*`/`focus*`/`iris*` hold
-  until `stop` arrives (or 10 s safety timeout).
+Pre-flight check: with pigpiod running and the plug in the camera,
+`pigs r 17` should read `1` (line idles high, camera pull-up) — proves ground
+continuity and diode orientation.
 
-## Integration: Bitfocus Companion (Raspberry Pi) → Stream Deck
+## Daemon — `lanc_gpio.py`
 
-The Raspberry Pi already running Bitfocus Companion gets the Arduino plugged
-into it, with `daemon/lancd.py` running there (systemd unit). Companion
-triggers the camera using its built-in **HTTP Request / Generic HTTP** module —
-every endpoint also answers plain **GET**, which that module can send directly:
+HTTP on `127.0.0.1:8787` (GET for Companion's HTTP Request module):
 
 | Stream Deck button        | Companion HTTP action (GET)                          |
 |---------------------------|------------------------------------------------------|
@@ -92,28 +100,40 @@ every endpoint also answers plain **GET**, which that module can send directly:
 | Zoom in fast              | `GET .../zoom?dir=in&speed=fast&state=on`            |
 | Focus near / far          | `GET .../focus?dir=near|far&state=on`                |
 | Iris open / close         | `GET .../iris?dir=open|close&state=on`               |
-| Stop zoom/focus/iris      | `GET .../stop`                                       |
-| Power off / display / AF  | `GET .../cmd?action=poweroff|display|aftoggle`       |
+| Stop zoom/focus/iris      | `GET .../stop`  — button UP                          |
+| AF on/off toggle          | `GET .../aftoggle`                                   |
+| Power off                 | `GET .../poweroff`                                   |
+| Data screen               | `GET .../display`                                    |
+| Status (rec state)        | `GET .../status`                                     |
 
-Companion "Press and hold / release" button behaviour maps the two GET calls
-for continuous zoom. Button feedback (e.g. red tally while recording) comes
-from the Companion **Variable** poll: define a variable that GETs
-`http://127.0.0.1:8787/status` (returns `{"recording":true,...}`) and style the
-REC button on that variable.
+Same endpoints as the old PC/Arduino `lancd.py`, so Companion wiring is
+identical.
 
-The daemon binds 127.0.0.1 by default; set `--listen 0.0.0.0:8787` only if
-Companion runs on a different box.
+Run on the Pi:
 
-## PC daemon
+```
+sudo apt install -y pigpiod python3-pigpio
+sudo systemctl enable --now pigpiod
+sudo python3 lanc_gpio.py --gpio 17 [--listen 127.0.0.1:8787]
+```
 
-`daemon/lancd.py` runs on the Raspberry Pi next to Bitfocus Companion (Arduino
-plugged into the Pi): opens /dev/ttyUSB0, exposes
-`POST /zoom {dir,in|out, speed slow|fast, state on|off}`, `POST /rec`,
-`GET /status` (last frame, rec-state decoded from word 5 status nibble), on
-port 8787. Also a `--keys` mode mapping arrow keys/PageUp-Down to zoom/rec for
-direct control.
+## Deployment (systemd)
 
-## Sources
-- boehmel.de/lanc — the canonical reverse-engineered LANC spec
-- github.com/AlexNe/arduino_lanc_sample — reference firmware
-- pdf.textfiles.com LANC/Control-L protocol dump
+```
+sudo cp lanc_gpio.py /opt/lancbridge/
+sudo cp lancd.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now lancd
+```
+
+`lancd.service` starts after and requires `pigpiod.service`.
+
+Chain: Stream Deck (USB) → Companion (Pi) → lanc_gpio.py → GPIO17 + diode →
+2.5mm LANC plug → HXR-MC2500.
+
+## Status
+
+- [x] LANC protocol verified against Sony/Control-L documentation
+- [x] pigpio waveform approach (DMA-timed bits, start-bit sync)
+- [x] HTTP API tested end-to-end
+- [ ] Hardware verification on the church camera
