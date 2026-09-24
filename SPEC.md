@@ -54,7 +54,7 @@ analog audio can't carry open-collector signaling. It's not a serial port.
 ## Hardware — parts
 
 - Raspberry Pi (any model with GPIO; the one already running Companion)
-- 2.5 mm stereo plug (tip = camera power out, ring = LANC signal, sleeve = GND)
+- 2.5 mm stereo plug (tip = LANC signal, ring = camera power out, sleeve = GND)
 - 1 kΩ resistor (series)
 - 1N4148 diode (a 1N4007 also works — see below)
 
@@ -63,9 +63,9 @@ analog audio can't carry open-collector signaling. It's not a serial port.
 Wiring:
 
 ```
-LANC plug ring (signal) ──[1kΩ]──►|── GPIO17 (BCM)      diode: anode at GPIO side,
+LANC plug tip (signal) ──[1kΩ]──►|── GPIO17 (BCM)      diode: anode at GPIO side,
 LANC plug sleeve (GND) ───────────────── Pi GND          cathode at LANC side
-LANC plug tip ── unused (camera power out; do NOT feed into Pi)
+LANC plug ring ── unused (camera power out; do NOT feed into Pi)
 ```
 
 The diode makes the Pi behave as true open-collector: GPIO **low** pulls the
