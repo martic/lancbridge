@@ -3,9 +3,9 @@
 GPIO (no Arduino). Same HTTP API as lancd.py, so Bitfocus Companion wiring is
 identical.
 
-Requires pigpiod running:  sudo apt install pigpiod && sudo systemctl enable --now pigpiod
+Requires pigpiod running. Bookworm: pigpio is not in apt - see SPEC.md install section.
 
-Wiring:  LANC ring --[1k]--|<-- GPIO17 (diode cathode toward LANC ring)
+Wiring:  LANC plug tip --[1k]--|<-- GPIO17 (diode cathode toward the plug)
          LANC sleeve -- Pi GND
 
 Run:  sudo python3 lanc_gpio.py --gpio 17 [--listen 127.0.0.1:8787]
