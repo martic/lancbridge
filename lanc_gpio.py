@@ -61,7 +61,7 @@ class LancGpio:
         self._wave = None
         self._wave_cmd = None
         pi.set_mode(gpio, pigpio.INPUT)
-        pi.set_pull_up_down(gpio, pigpio.PUD_OFF)
+        pi.set_pull_up_down(gpio, pigpio.PUD_UP)
         pi.callback(gpio, pigpio.EITHER_EDGE, self._edge)
         threading.Thread(target=self._loop, daemon=True).start()
 
@@ -98,11 +98,11 @@ class LancGpio:
     def _recv_byte(self):
         b = 0
         for i in range(8):
-            self.pi.gpio_delay(BIT_US // 2)
+            time.sleep(BIT_US / 2 / 1e6)
             if self.pi.read(self.gpio):
                 b |= (1 << i)
-            self.pi.gpio_delay(BIT_US // 2)
-        self.pi.gpio_delay(BIT_US)  # stop bit
+            time.sleep(BIT_US / 2 / 1e6)
+        time.sleep(BIT_US / 1e6)  # stop bit
         return b
 
     # ---- frame engine --------------------------------------------------------
