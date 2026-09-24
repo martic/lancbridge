@@ -1,0 +1,21 @@
+{
+	"id": "lancbridge",
+	"name": "Sony HXR-MC2500 (LANC)",
+	"shortname": "LANC",
+	"description": "Control the Sony HXR-MC2500 camera via the lancbridge daemon",
+	"manufacturer": "Sony",
+	"products": ["HXR-MC2500 (LANC)"],
+	"keywords": ["Camera", "LANC", "Sony"],
+	"version": "1.0.0",
+	"license": "MIT",
+	"repository": "git+https://github.com/martic/lancbridge.git",
+	"bugs": "https://github.com/martic/lancbridge/issues",
+	"legacyIds": [],
+	"maintainers": [{ "name": "Martin" }],
+	"runtime": {
+		"type": "node22",
+		"api": "nodejs-ipc",
+		"apiVersion": "2.0.4",
+		"entrypoint": "../main.js"
+	}
+}

@@ -1,0 +1,27 @@
+{
+	"name": "v1sdi-remote",
+	"manufacturer": "Roland",
+	"products": [
+		"V-1SDI (via v1sdi-remote daemon)"
+	],
+	"keywords": [
+		"Video Switcher",
+		"Roland",
+		"V-1SDI"
+	],
+	"homepage": "https://github.com/martic/v1sdi-remote",
+	"main": "main.js",
+	"type": "module",
+	"scripts": {
+		"test": "echo no tests"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/martic/companion-module-v1sdi-remote.git"
+	},
+	"license": "MIT",
+	"dependencies": {
+		"@companion-module/base": "^2.1.3"
+	},
+	"version": "1.0.0"
+}
