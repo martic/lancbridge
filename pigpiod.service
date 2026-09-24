@@ -1,0 +1,11 @@
+[Unit]
+Description=pigpio daemon required by lancd
+After=network.target
+
+[Service]
+Type=forking
+ExecStart=/usr/local/bin/pigpiod
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

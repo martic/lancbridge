@@ -81,11 +81,18 @@ physical pin 9 or any GND. Changeable with `--gpio N`.
 Diode choice: the 1N4148 (fast switching, low capacitance) is ideal; a 1N4007
 works fine at LANC speeds — its few-µs reverse recovery is negligible against
 the 104 µs bit time, and current is only a few mA. Orientation matters more
-than part choice: anode toward GPIO, cathode (bar) toward the LANC ring.
+than part choice: anode toward GPIO, cathode (bar) toward the LANC plug (signal contact).
 
-Pre-flight check: with pigpiod running and the plug in the camera,
-`pigs r 17` should read `1` (line idles high, camera pull-up) — proves ground
-continuity and diode orientation.
+Pre-flight check: with pigpiod running and the plug in the camera, enable the
+Pi internal pull-up and read: `pigs pud 17 2 && pigs r 17` should read `1`
+(line idles high via the pull-up; the camera cannot lift GPIO through the
+diode). It will flicker to `0` ~50x/s while the camera clocks frames — that is
+healthy. A permanently flat `1` means the diode is reversed or the wrong plug
+contact is wired; a flat `0` means no pull-up/ground continuity.
+
+Daemon wiring detail: lancd sets `PUD_UP` on the GPIO at startup — the diode
+circuit REQUIRES it (the camera low pulls GPIO down through the diode; the
+pull-up makes idle read high).
 
 ## Daemon — `lanc_gpio.py`
 
@@ -111,9 +118,28 @@ identical.
 
 Run on the Pi:
 
+Raspberry Pi OS Bookworm note: the `pigpio`/`pigpiod` APT packages were
+removed. Build from source and install the binaries only:
+
 ```
-sudo apt install -y pigpiod python3-pigpio
-sudo systemctl enable --now pigpiod
+sudo apt install -y git make gcc python3-dev python3-pip
+git clone https://github.com/joan2937/pigpio.git /tmp/pigpio
+cd /tmp/pigpio && make -j4
+sudo install -m755 pigpiod pigs pig2vcd /usr/local/bin/
+sudo install -m755 libpigpio.so.1 /usr/local/lib/ && sudo ldconfig
+pip3 install pigpio --break-system-packages          # Python module (root too!)
+sudo cp pigpiod.service /etc/systemd/system/          # ships in this repo
+sudo systemctl daemon-reload && sudo systemctl enable --now pigpiod
+```
+
+The unit is `Type=forking`: pigpiod self-daemonizes (forks), and a plain
+Type=simple unit kills it with an unhandled SIGCONT ("Unhandled signal 18").
+Also: `make install` fails on Bookworm at its distutils Python step — install
+binaries + libs directly as shown above.
+
+Then run:
+
+```
 sudo python3 lanc_gpio.py --gpio 17 [--listen 127.0.0.1:8787]
 ```
 
@@ -121,7 +147,7 @@ sudo python3 lanc_gpio.py --gpio 17 [--listen 127.0.0.1:8787]
 
 ```
 sudo cp lanc_gpio.py /opt/lancbridge/
-sudo cp lancd.service /etc/systemd/system/
+sudo cp pigpiod.service lancd.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now lancd
 ```
