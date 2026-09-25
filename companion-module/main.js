@@ -218,7 +218,15 @@ class LancBridgeInstance extends InstanceBase {
 					id: 'lancbridge_main',
 					name: 'Sony HXR-MC2500 (LANC)',
 					description: 'Camera control via lancbridge, with REC tally',
-					definitions: Object.keys(presets),
+					definitions: [
+						{
+							id: 'lancbridge_cam',
+							type: 'simple',
+							name: 'Camera functions',
+							description: 'REC, zoom, focus, iris with tally',
+							presets: Object.keys(presets),
+						},
+					],
 				},
 			],
 			presets,
