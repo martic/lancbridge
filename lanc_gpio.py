@@ -121,15 +121,23 @@ class LancGpio:
 
     # ---- waveform for the 2 command bytes -----------------------------------
     def _build_wave(self):
+        # The camera drives the frame sync AND every byte's start/stop bits
+        # (idle capture shows L105 before all 8 bytes). The remote therefore
+        # injects ONLY the 16 data bits: byte0 data at bits 1-8, byte1 data at
+        # bits 11-18, staying HIGH (blocked = no effect) across the camera's
+        # stop/start bits at bit 0, 9, 10 and 19.
         MASK = 1 << self.gpio
-        seq = []
-        for byte in self.cmd:
-            seq.append((0, MASK, BIT_US))            # start bit: low
+        c0, c1 = self.cmd
+        seq = [(0, MASK, BIT_US)]      # idle high before first data bit
+        for byte in (c0, c1):
             for i in range(8):
                 bit = 1 if byte & (1 << i) else 0
                 seq.append((MASK if bit else 0,
                             0 if bit else MASK, BIT_US))
-            seq.append((0, MASK, BIT_US))            # stop: high (diode blocks)
+            seq.append((0, MASK, BIT_US))        # stop + next start (camera)
+        # final stop bit is included for byte1 too — keep it (camera drives
+        # it high; our high is a no-op, but if the last data bit was low we
+        # must release before the camera's stop bit)
         self.pi_tx.wave_clear()
         self.pi_tx.wave_add_generic([
             pigpio.pulse(gpio_on, gpio_off, delay) for gpio_on, gpio_off, delay in seq
