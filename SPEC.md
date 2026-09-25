@@ -63,8 +63,10 @@ analog audio can't carry open-collector signaling. It's not a serial port.
 Wiring:
 
 ```
-LANC plug tip (signal) ──[1kΩ]──►|── GPIO17 (BCM)      diode: anode at GPIO side,
-LANC plug sleeve (GND) ───────────────── Pi GND          cathode at LANC side
+LANC plug tip (signal) ──[1kΩ]──────|◄── GPIO17 (BCM)   diode: anode at GPIO side,
+LANC plug sleeve (GND) ───────────────── Pi GND          cathode (bar) at LANC side
+(verify by behaviour: with this orientation the camera's lows reach GPIO —
+ receive works — AND GPIO lows pull the line down — transmit works.)
 LANC plug ring ── unused (camera power out; do NOT feed into Pi)
 ```
 
