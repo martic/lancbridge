@@ -67,6 +67,8 @@ class LancGpio:
         self._start_event = threading.Event()
         self._last_fall = None
         self._last_frame_tick = None
+        self._start_mono = None
+        self._period = 19000
         self._wave = None
         self._wave_cmd = None
         pi.set_mode(gpio, pigpio.INPUT)
@@ -87,11 +89,15 @@ class LancGpio:
         if BIT_LO_LO_US <= width <= BIT_LO_HI_US and self._last_fall is not None:
             if self._last_frame_tick is None:
                 self._last_frame_tick = self._last_fall
+                self._start_mono = time.monotonic()
                 self._start_event.set()
             else:
                 gap = (self._last_fall - self._last_frame_tick) & 0xFFFFFFFF
                 if gap >= FRAME_MIN_GAP_US:
+                    if 15000 < gap < 25000:
+                        self._period = gap
                     self._last_frame_tick = self._last_fall
+                    self._start_mono = time.monotonic()
                     self._start_event.set()
 
     # ---- waveform for the 2 command bytes -----------------------------------
@@ -136,6 +142,18 @@ class LancGpio:
                 continue
             self._start_event.clear()
             self.connected = True
+
+            # The frame-start edge was detected by the callback thread; by the
+            # time we wake, we are mid-frame. Schedule the send at the NEXT
+            # frame start so our 2 bytes replace the remote slot cleanly.
+            elapsed = (time.monotonic() - self._start_mono) * 1e6
+            if elapsed < 2000:
+                k = 0
+            else:
+                k = int(elapsed // self._period) + 1
+            delay_us = k * self._period - elapsed
+            if delay_us > 0:
+                time.sleep(delay_us / 1e6)
 
             with self._lock:
                 c0, c1 = self.cmd
