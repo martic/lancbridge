@@ -142,6 +142,7 @@ class LancGpio:
                 frames_left = self.cmd_frames_left
 
             wid = self._wave if self._wave_cmd == (c0, c1) else self._build_wave()
+            self.pi.set_mode(self.gpio, pigpio.OUTPUT)
             self.pi.wave_send_once(wid)
             # wave duration ~ 20 * 104us = 2.1 ms; camera then drives bytes 2-7
             t_end = time.monotonic() + 0.00208
