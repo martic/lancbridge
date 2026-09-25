@@ -15,6 +15,12 @@ import argparse
 import json
 import threading
 import time
+def _thread_excepthook(args):
+    import traceback
+    print("LANC THREAD CRASH:", file=__import__("sys").stderr)
+    traceback.print_exception(args.exc_type, args.exc_value, args.exc_traceback)
+    __import__("sys").stderr.flush()
+threading.excepthook = _thread_excepthook
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
@@ -30,6 +36,7 @@ ONE_SHOT_FRAMES = 5     # frames a one-shot command is repeated
 HOLD_TIMEOUT_FRAMES = 240  # ~5s safety for hold commands
 
 COMMANDS = {
+    "stop": (0x00, 0x00),
     "rec": (0x18, 0x33), "poweroff": (0x18, 0x5E), "display": (0x18, 0xB4),
     "aftoggle": (0x28, 0x41),
     "zoomin": (0x28, 0x35), "zoomout": (0x28, 0x37),
