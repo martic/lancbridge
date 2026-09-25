@@ -147,10 +147,9 @@ class LancGpio:
             # time we wake, we are mid-frame. Schedule the send at the NEXT
             # frame start so our 2 bytes replace the remote slot cleanly.
             elapsed = (time.monotonic() - self._start_mono) * 1e6
-            if elapsed < 2000:
-                k = 0
-            else:
-                k = int(elapsed // self._period) + 1
+            # never fire mid-frame: if we woke even slightly late, wait for the
+            # next frame start (a 2-byte wave needs to begin at bit 0 exactly)
+            k = max(1, int(elapsed // self._period) + (0 if elapsed <= self._period * 0.3 else 1)) if elapsed > 300 else 0
             delay_us = k * self._period - elapsed
             if delay_us > 0:
                 time.sleep(delay_us / 1e6)
