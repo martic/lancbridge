@@ -178,6 +178,11 @@ class LancGpio:
                     if self.cmd_frames_left == 0:
                         self.cmd = [0x00, 0x00]
 
+    def send_raw(self, c0, c1, frames=8):
+        with self._lock:
+            self.cmd = [c0 & 0xFF, c1 & 0xFF]
+            self.cmd_frames_left = max(1, frames)
+
     # ---- command dispatch -----------------------------------------------------
     def dispatch(self, action=None, kind=None, direction=None, speed="slow", state="on"):
         if kind:
@@ -235,6 +240,15 @@ def build_server(lanc: LancGpio):
                 self._json(lanc.dispatch(action="stop"))
             elif u.path == "/cmd":
                 self._json(lanc.dispatch(action=q.get("action")))
+            elif u.path == "/raw":
+                try:
+                    c0 = int(q["c0"], 16); c1 = int(q["c1"], 16)
+                    frames = int(q.get("frames", 8))
+                except (KeyError, ValueError):
+                    self._json({"error": "usage: /raw?c0=28&c1=35&frames=8"}, 400)
+                    return
+                lanc.send_raw(c0, c1, frames)
+                self._json({"sent": f"{c0:02x}{c1:02x}", "frames": frames})
             elif u.path == "/status":
                 self._json({"recording": lanc.recording,
                             "connected": lanc.connected,
