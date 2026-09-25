@@ -67,38 +67,57 @@ class LancGpio:
         self._start_event = threading.Event()
         self._last_fall = None
         self._last_frame_tick = None
-        self._start_mono = None
-        self._period = 19000
-        self._wave = None
+        self._wave_id = None
         self._wave_cmd = None
+        self.sends = 0
+        # dedicated pigpio connection for the callback thread (pigpio's python
+        # client is not thread-safe over a shared socket)
+        self.pi_tx = pigpio.pi()
         pi.set_mode(gpio, pigpio.INPUT)
         pi.set_pull_up_down(gpio, pigpio.PUD_UP)
+        self.pi_tx.set_mode(gpio, pigpio.INPUT)
+        self.pi_tx.set_pull_up_down(gpio, pigpio.PUD_UP)
         pi.callback(gpio, pigpio.EITHER_EDGE, self._edge)
         threading.Thread(target=self._loop, daemon=True).start()
 
-    # ---- start-bit detection ------------------------------------------------
+    # ---- frame-start detection + transmit ------------------------------------
     def _edge(self, gpio, level, tick):
         if level == 0:
+            # FALLING edge: a frame's first bit begins HERE. If the previous
+            # frame start was >=5ms ago (inter-frame idle), this is it —
+            # fire the command wave right now, at bit 0, from the callback
+            # thread (pigpio notification latency ~100us, far better than
+            # scheduling from a Python thread).
+            if self._last_frame_tick is not None:
+                gap = (tick - self._last_frame_tick) & 0xFFFFFFFF
+                if gap >= FRAME_MIN_GAP_US:
+                    self._last_frame_tick = tick
+                    self.connected = True
+                    self._on_frame_start()
+            else:
+                self._last_frame_tick = tick
             self._last_fall = tick
             return
-        # rising edge: measure low pulse width (handles 32-bit tick wrap)
+        # rising edge: validate the low pulse was one bit time
         width = (tick - self._last_fall) & 0xFFFFFFFF if self._last_fall is not None else 0
-        # measured on this camera: frames repeat every ~20ms; a data-bit low is
-        # ~104us. The frame START is the 1-bit low that follows the long idle
-        # (>5ms high). Key on: short low + preceding idle gap.
-        if BIT_LO_LO_US <= width <= BIT_LO_HI_US and self._last_fall is not None:
-            if self._last_frame_tick is None:
-                self._last_frame_tick = self._last_fall
-                self._start_mono = time.monotonic()
-                self._start_event.set()
-            else:
-                gap = (self._last_fall - self._last_frame_tick) & 0xFFFFFFFF
-                if gap >= FRAME_MIN_GAP_US:
-                    if 15000 < gap < 25000:
-                        self._period = gap
-                    self._last_frame_tick = self._last_fall
-                    self._start_mono = time.monotonic()
-                    self._start_event.set()
+        if BIT_LO_LO_US <= width <= BIT_LO_HI_US:
+            self._start_event.set()
+
+    def _on_frame_start(self):
+        """Runs in the pigpio callback thread, at the frame-start edge."""
+        with self._lock:
+            frames_left = self.cmd_frames_left
+            wid = self._wave_id
+        if not frames_left or wid is None:
+            return
+        self.pi_tx.set_mode(self.gpio, pigpio.OUTPUT)
+        self.pi_tx.wave_send_once(wid)
+        self.sends += 1
+        with self._lock:
+            self.cmd_frames_left = frames_left - 1
+            if self.cmd_frames_left == 0:
+                self.cmd = [0x00, 0x00]
+                self._build_wave()
 
     # ---- waveform for the 2 command bytes -----------------------------------
     def _build_wave(self):
@@ -111,14 +130,12 @@ class LancGpio:
                 seq.append((MASK if bit else 0,
                             0 if bit else MASK, BIT_US))
             seq.append((0, MASK, BIT_US))            # stop: high (diode blocks)
-        self.pi.wave_clear()
-        self.pi.wave_add_generic([
+        self.pi_tx.wave_clear()
+        self.pi_tx.wave_add_generic([
             pigpio.pulse(gpio_on, gpio_off, delay) for gpio_on, gpio_off, delay in seq
         ])
-        wid = self.pi.wave_create()
+        self._wave_id = self.pi_tx.wave_create()
         self._wave_cmd = tuple(self.cmd)
-        self._wave = wid
-        return wid
 
     # ---- receive one byte (camera driving; we sample mid-bit) ---------------
     def _recv_byte(self):
@@ -143,48 +160,28 @@ class LancGpio:
             self._start_event.clear()
             self.connected = True
 
-            # The frame-start edge was detected by the callback thread; by the
-            # time we wake, we are mid-frame. Schedule the send at the NEXT
-            # frame start so our 2 bytes replace the remote slot cleanly.
-            elapsed = (time.monotonic() - self._start_mono) * 1e6
-            # never fire mid-frame: if we woke even slightly late, wait for the
-            # next frame start (a 2-byte wave needs to begin at bit 0 exactly)
-            k = max(1, int(elapsed // self._period) + (0 if elapsed <= self._period * 0.3 else 1)) if elapsed > 300 else 0
-            delay_us = k * self._period - elapsed
-            if delay_us > 0:
-                time.sleep(delay_us / 1e6)
-            with self._lock:
-                c0, c1 = self.cmd
-                frames_left = self.cmd_frames_left
-
-            t_sent = time.monotonic()
-            print(f"LANC send: cmd={c0:02x}{c1:02x} wake_after={elapsed/1000:.1f}ms "
-                  f"period={self._period/1000:.2f}ms k={k} slept={delay_us/1000:.1f}ms "
-                  f"total_after_trigger={(t_sent-self._start_mono)*1000:.2f}ms", flush=True)
-            wid = self._wave if self._wave_cmd == (c0, c1) else self._build_wave()
-            self.pi.set_mode(self.gpio, pigpio.OUTPUT)
-            self.pi.wave_send_once(wid)
-            # wave duration ~ 20 * 104us = 2.1 ms; camera then drives bytes 2-7
-            t_end = time.monotonic() + 0.00208
-            while time.monotonic() < t_end and self.pi.wave_tx_busy():
+            # The callback either just transmitted (wave ~2.08ms, then pin
+            # must go back to INPUT before the camera drives bytes 2-7) or a
+            # frame passed command-free. Wait out the 2-byte slot, then read.
+            deadline = time.monotonic() + 0.00208
+            while time.monotonic() < deadline:
+                if not self.pi.wave_tx_busy():
+                    break
                 time.sleep(0.0002)
             self.pi.set_mode(self.gpio, pigpio.INPUT)
             # we are now at bit 20 = camera's byte-2 start bit
 
+            with self._lock:
+                c0, c1 = self.cmd
             frame = [c0, c1] + [self._recv_byte() for _ in range(6)]
             self.last_frame = frame
             self.recording = (frame[5] & 0xF0) == 0x30
-
-            if frames_left:
-                with self._lock:
-                    self.cmd_frames_left = frames_left - 1
-                    if self.cmd_frames_left == 0:
-                        self.cmd = [0x00, 0x00]
 
     def send_raw(self, c0, c1, frames=8):
         with self._lock:
             self.cmd = [c0 & 0xFF, c1 & 0xFF]
             self.cmd_frames_left = max(1, frames)
+            self._build_wave()
 
     # ---- command dispatch -----------------------------------------------------
     def dispatch(self, action=None, kind=None, direction=None, speed="slow", state="on"):
@@ -255,7 +252,8 @@ def build_server(lanc: LancGpio):
             elif u.path == "/status":
                 self._json({"recording": lanc.recording,
                             "connected": lanc.connected,
-                            "last_frame": lanc.last_frame})
+                            "last_frame": lanc.last_frame,
+                            "sends": lanc.sends})
             else:
                 self._json({"error": "not found"}, 404)
 
