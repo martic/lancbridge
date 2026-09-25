@@ -84,14 +84,15 @@ class LancGpio:
 
     # ---- waveform for the 2 command bytes -----------------------------------
     def _build_wave(self):
+        MASK = 1 << self.gpio
         seq = []
         for byte in self.cmd:
-            seq.append((0, self.gpio, BIT_US))            # start bit: low
+            seq.append((0, MASK, BIT_US))            # start bit: low
             for i in range(8):
                 bit = 1 if byte & (1 << i) else 0
-                seq.append((self.gpio if bit else 0,
-                            self.gpio if not bit else 0, BIT_US))
-            seq.append((0, self.gpio, BIT_US))            # stop: high (diode blocks)
+                seq.append((MASK if bit else 0,
+                            0 if bit else MASK, BIT_US))
+            seq.append((0, MASK, BIT_US))            # stop: high (diode blocks)
         self.pi.wave_clear()
         self.pi.wave_add_generic([
             pigpio.pulse(gpio_on, gpio_off, delay) for gpio_on, gpio_off, delay in seq
