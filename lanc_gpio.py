@@ -128,10 +128,13 @@ class LancGpio:
         # stop/start bits at bit 0, 9, 10 and 19.
         MASK = 1 << self.gpio
         c0, c1 = self.cmd
+        order = getattr(self, '_bit_order', 'lsb')
         seq = []
         for byte in (c0, c1):
             for i in range(8):
                 bit = 1 if byte & (1 << i) else 0
+                if order == 'msb':
+                    bit = 1 if byte & (0x80 >> i) else 0
                 seq.append((MASK if bit else 0,
                             0 if bit else MASK, BIT_US))
             seq.append((0, MASK, BIT_US))        # stop + next start (camera)
@@ -255,8 +258,10 @@ def build_server(lanc: LancGpio):
                 except (KeyError, ValueError):
                     self._json({"error": "usage: /raw?c0=28&c1=35&frames=8"}, 400)
                     return
+                lanc._bit_order = 'msb' if q.get('order') == 'msb' else 'lsb'
                 lanc.send_raw(c0, c1, frames)
-                self._json({"sent": f"{c0:02x}{c1:02x}", "frames": frames})
+                self._json({"sent": f"{c0:02x}{c1:02x}", "frames": frames,
+                            "order": lanc._bit_order})
             elif u.path == "/status":
                 self._json({"recording": lanc.recording,
                             "connected": lanc.connected,
