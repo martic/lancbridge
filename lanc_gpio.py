@@ -116,13 +116,16 @@ class LancGpio:
 
     # ---- receive one byte (camera driving; we sample mid-bit) ---------------
     def _recv_byte(self):
+        # Called positioned at the START of a byte's start bit.
+        # LANC byte: 1 start(0) + 8 data LSB-first + 1 stop(1) = 10 bit times.
         b = 0
+        time.sleep(BIT_US * 1.5 / 1e6)   # skip start bit, land mid data-bit 0
         for i in range(8):
-            time.sleep(BIT_US / 2 / 1e6)
             if self.pi.read(self.gpio):
                 b |= (1 << i)
-            time.sleep(BIT_US / 2 / 1e6)
-        time.sleep(BIT_US / 1e6)  # stop bit
+            time.sleep(BIT_US / 1e6)
+        time.sleep(BIT_US * 0.5 / 1e6)   # finish last data bit
+        time.sleep(BIT_US * 1.0 / 1e6)   # stop bit + next byte's start bit
         return b
 
     # ---- frame engine --------------------------------------------------------
@@ -141,10 +144,11 @@ class LancGpio:
             wid = self._wave if self._wave_cmd == (c0, c1) else self._build_wave()
             self.pi.wave_send_once(wid)
             # wave duration ~ 20 * 104us = 2.1 ms; camera then drives bytes 2-7
-            t_end = time.monotonic() + 0.0024
+            t_end = time.monotonic() + 0.00208
             while time.monotonic() < t_end and self.pi.wave_tx_busy():
                 time.sleep(0.0002)
             self.pi.set_mode(self.gpio, pigpio.INPUT)
+            # we are now at bit 20 = camera's byte-2 start bit
 
             frame = [c0, c1] + [self._recv_byte() for _ in range(6)]
             self.last_frame = frame
