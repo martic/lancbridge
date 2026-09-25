@@ -13,6 +13,7 @@ class LancBridgeInstance extends InstanceBase {
 		this.config = config
 		this.updateStatus(InstanceStatus.Connecting)
 		this.setActionDefinitions(this.getActionDefinitions())
+		this.setFeedbackDefinitions(this.getFeedbackDefinitions())
 		this.setPresets()
 		this.startPolling()
 	}
