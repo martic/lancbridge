@@ -32,7 +32,7 @@ except ImportError:
 BIT_US = 104            # LANC bit time
 BIT_LO_LO_US = 60       # a single data-bit low
 BIT_LO_HI_US = 300
-FRAME_MIN_GAP_US = 5000 # idle between frames ~10ms
+FRAME_MIN_GAP_US = 15000 # sync-to-sync period ~19ms; camera's mid-frame lows are only ~7ms after sync
 ONE_SHOT_FRAMES = 5     # frames a one-shot command is repeated
 HOLD_TIMEOUT_FRAMES = 240  # ~5s safety for hold commands
 
