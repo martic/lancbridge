@@ -30,8 +30,9 @@ except ImportError:
     raise SystemExit("pip install pigpio (and run pigpiod)")
 
 BIT_US = 104            # LANC bit time
-START_LO_US = 850       # measured: camera start-bit low ~950us
-START_HI_US = 1100
+BIT_LO_LO_US = 60       # a single data-bit low
+BIT_LO_HI_US = 300
+FRAME_MIN_GAP_US = 5000 # idle between frames ~10ms
 ONE_SHOT_FRAMES = 5     # frames a one-shot command is repeated
 HOLD_TIMEOUT_FRAMES = 240  # ~5s safety for hold commands
 
@@ -79,8 +80,14 @@ class LancGpio:
             return
         # rising edge: measure low pulse width (handles 32-bit tick wrap)
         width = (tick - self._last_fall) & 0xFFFFFFFF if self._last_fall is not None else 0
-        if START_LO_US <= width <= START_HI_US:
-            self._start_event.set()
+        # measured on this camera: frames repeat every ~20ms; a data-bit low is
+        # ~104us. The frame START is the 1-bit low that follows the long idle
+        # (>5ms high). Key on: short low + preceding idle gap.
+        if BIT_LO_LO_US <= width <= BIT_LO_HI_US and self._last_fall is not None:
+            gap = (self._last_fall - self._last_frame_tick) & 0xFFFFFFFF
+            if self._last_frame_tick is None or gap >= FRAME_MIN_GAP_US:
+                self._last_frame_tick = self._last_fall
+                self._start_event.set()
 
     # ---- waveform for the 2 command bytes -----------------------------------
     def _build_wave(self):
@@ -128,7 +135,7 @@ class LancGpio:
 
             wid = self._wave if self._wave_cmd == (c0, c1) else self._build_wave()
             self.pi.wave_send_once(wid)
-            # wave duration ~ 20 * 104us = 2.1 ms
+            # wave duration ~ 20 * 104us = 2.1 ms; camera then drives bytes 2-7
             t_end = time.monotonic() + 0.0024
             while time.monotonic() < t_end and self.pi.wave_tx_busy():
                 time.sleep(0.0002)
