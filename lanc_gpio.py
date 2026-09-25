@@ -165,10 +165,10 @@ class LancGpio:
             # frame passed command-free. Wait out the 2-byte slot, then read.
             deadline = time.monotonic() + 0.00208
             while time.monotonic() < deadline:
-                if not self.pi.wave_tx_busy():
+                if not self.pi_tx.wave_tx_busy():
                     break
                 time.sleep(0.0002)
-            self.pi.set_mode(self.gpio, pigpio.INPUT)
+            self.pi_tx.set_mode(self.gpio, pigpio.INPUT)
             # we are now at bit 20 = camera's byte-2 start bit
 
             with self._lock:
