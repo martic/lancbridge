@@ -66,6 +66,7 @@ class LancGpio:
         self._lock = threading.Lock()
         self._start_event = threading.Event()
         self._last_fall = None
+        self._last_frame_tick = None
         self._wave = None
         self._wave_cmd = None
         pi.set_mode(gpio, pigpio.INPUT)
