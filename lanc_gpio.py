@@ -128,7 +128,7 @@ class LancGpio:
         # stop/start bits at bit 0, 9, 10 and 19.
         MASK = 1 << self.gpio
         c0, c1 = self.cmd
-        seq = [(0, MASK, BIT_US)]      # idle high before first data bit
+        seq = []
         for byte in (c0, c1):
             for i in range(8):
                 bit = 1 if byte & (1 << i) else 0
