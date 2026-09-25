@@ -48,7 +48,7 @@ class LancBridgeInstance extends InstanceBase {
 				const j = await this.apiGet('/status')
 				this.state = j || {}
 				this.updateStatus(this.state.connected ? InstanceStatus.Ok : InstanceStatus.UnknownError, this.state.connected ? undefined : 'LANC not connected')
-				this.checkFeedbacks()
+				this.checkFeedbacks(...['recording', 'connected'])
 			} catch (e) {
 				this.updateStatus(InstanceStatus.UnknownError, 'lancbridge unreachable: ' + e.message)
 			}
