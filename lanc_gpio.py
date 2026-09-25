@@ -153,15 +153,14 @@ class LancGpio:
             delay_us = k * self._period - elapsed
             if delay_us > 0:
                 time.sleep(delay_us / 1e6)
-            t_sent = time.monotonic()
-            print(f"LANC send: cmd={c0:02x}{c1:02x} wake_after={elapsed/1000:.1f}ms "
-                  f"period={self._period/1000:.2f}ms k={k} slept={delay_us/1000:.1f}ms "
-                  f"total_after_trigger={(t_sent-self._start_mono)*1000:.2f}ms", flush=True)
-
             with self._lock:
                 c0, c1 = self.cmd
                 frames_left = self.cmd_frames_left
 
+            t_sent = time.monotonic()
+            print(f"LANC send: cmd={c0:02x}{c1:02x} wake_after={elapsed/1000:.1f}ms "
+                  f"period={self._period/1000:.2f}ms k={k} slept={delay_us/1000:.1f}ms "
+                  f"total_after_trigger={(t_sent-self._start_mono)*1000:.2f}ms", flush=True)
             wid = self._wave if self._wave_cmd == (c0, c1) else self._build_wave()
             self.pi.set_mode(self.gpio, pigpio.OUTPUT)
             self.pi.wave_send_once(wid)
