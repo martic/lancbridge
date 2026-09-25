@@ -85,10 +85,14 @@ class LancGpio:
         # ~104us. The frame START is the 1-bit low that follows the long idle
         # (>5ms high). Key on: short low + preceding idle gap.
         if BIT_LO_LO_US <= width <= BIT_LO_HI_US and self._last_fall is not None:
-            gap = (self._last_fall - self._last_frame_tick) & 0xFFFFFFFF
-            if self._last_frame_tick is None or gap >= FRAME_MIN_GAP_US:
+            if self._last_frame_tick is None:
                 self._last_frame_tick = self._last_fall
                 self._start_event.set()
+            else:
+                gap = (self._last_fall - self._last_frame_tick) & 0xFFFFFFFF
+                if gap >= FRAME_MIN_GAP_US:
+                    self._last_frame_tick = self._last_fall
+                    self._start_event.set()
 
     # ---- waveform for the 2 command bytes -----------------------------------
     def _build_wave(self):
