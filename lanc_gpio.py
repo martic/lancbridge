@@ -24,8 +24,8 @@ except ImportError:
     raise SystemExit("pip install pigpio (and run pigpiod)")
 
 BIT_US = 104            # LANC bit time
-START_LO_US = 1200      # valid frame start-bit low pulse
-START_HI_US = 1500
+START_LO_US = 850       # measured: camera start-bit low ~950us
+START_HI_US = 1100
 ONE_SHOT_FRAMES = 5     # frames a one-shot command is repeated
 HOLD_TIMEOUT_FRAMES = 240  # ~5s safety for hold commands
 
