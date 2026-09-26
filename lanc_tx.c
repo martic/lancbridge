@@ -156,7 +156,8 @@ static int wait_sync(struct timespec *t0)
 
 static void drive_frame(unsigned c0, unsigned c1)
 {
-    struct timespec t0, t1;
+    struct timespec t0, t1, nw;
+    long late;
 
     if (wait_sync(&t0) != 0)
         return;
@@ -167,6 +168,9 @@ static void drive_frame(unsigned c0, unsigned c1)
     for (int i = 0; i < 8; i++) {
         ts_add_us(&rel, BIT_US);
         sleep_until(&rel);
+        now_ts(&nw);
+        late = ts_us(&nw) - ts_us(&rel);
+        fprintf(stderr, "b0.%i late=%ldus\n", i, late);
         set_drive_bit((c0 >> i) & 1);
     }
     set_input(); /* stop bit: line released, floats high */
