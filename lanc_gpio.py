@@ -381,7 +381,7 @@ class LancGpio:
                     row = {"sync": sync_tick,
                            "wire": [b0, b1],
                            "bits": ''.join('1' if b else '0' for b in bits)}
-                    if wire_payload_seen < 3:
+                    if row["wire"][0] == b and wire_payload_seen < 3:
                         # raw run-length waveform of the first 2100us after
                         # sync (both command bytes), for unambiguous decode
                         wire_payload_seen += 1
@@ -390,7 +390,7 @@ class LancGpio:
                         for tt, lv in edges:
                             if tt <= tick or tt > tick + 2100:
                                 continue
-                            runs.append(f"{'L' if cur_lvl else 'H'}{tt - cur_t}")
+                            runs.append(f"{'H' if cur_lvl else 'L'}{tt - cur_t}")
                             cur_t, cur_lvl = tt, lv
                         row["runs"] = runs
                     if 0 < lead < 8:
