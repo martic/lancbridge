@@ -79,6 +79,10 @@ class LancGpio:
         self._tx_fifo = None
         self._tx_proc = None
         self._tx_fifo_path = '/tmp/lanc_tx.fifo'
+        self._tx_ok = False
+        self._tx_writer_started = False
+        import queue
+        self._txq = queue.Queue()
         self._last_frame_tick = None
         self._wave_id = None
         self._wave_cmd = None
@@ -130,15 +134,16 @@ class LancGpio:
 
     def _ensure_helper(self):
         """Launch the C transmitter (libgpiod, ~20us edge latency). Returns
-        True if the helper is alive and the FIFO is open."""
-        if self._tx_fifo is not None and self._tx_proc is not None \
-                and self._tx_proc.poll() is None:
+        True if the helper is alive and the FIFO is open.
+        MUST be called only from the TX writer thread (blocks on fifo open)."""
+        if self._tx_ok:
             return True
         try:
             import os as _os
             import subprocess as _sp
             binp = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), 'lanc_tx')
             if not _os.path.exists(binp):
+                print("LANC tx: lanc_tx binary missing — falling back to waves", flush=True)
                 return False
             fifo = self._tx_fifo_path
             try:
@@ -149,12 +154,42 @@ class LancGpio:
                                       stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
             self._tx_fifo = open(fifo, 'w', buffering=1)
             time.sleep(0.05)
-            print("LANC tx: using C helper (libgpiod)", flush=True)
-            return self._tx_proc.poll() is None
+            if self._tx_proc.poll() is None:
+                self._tx_ok = True
+                print("LANC tx: using C helper (libgpiod)", flush=True)
+                return True
+            return False
         except Exception as e:
             print(f"LANC tx helper setup failed: {e}", flush=True)
             self._tx_fifo = None
             return False
+
+    def _tx_writer(self):
+        """Dedicated thread: drains the TX queue into the helper FIFO so the
+        pigpio callback thread never blocks on I/O."""
+        while True:
+            c0, c1 = self._txq.get()
+            try:
+                if not self._tx_ok and not self._ensure_helper():
+                    self._txq.task_done()
+                    continue
+                self._tx_fifo.write(f"{c0:02x} {c1:02x} 1\n")
+            except Exception as e:
+                print(f"LANC tx fifo write failed: {e}", flush=True)
+                self._tx_ok = False
+                try:
+                    if self._tx_fifo:
+                        self._tx_fifo.close()
+                except Exception:
+                    pass
+                self._tx_fifo = None
+            finally:
+                self._txq.task_done()
+
+    def _start_writer(self):
+        if not self._tx_writer_started:
+            self._tx_writer_started = True
+            threading.Thread(target=self._tx_writer, daemon=True).start()
 
     def _on_frame_start(self, tick, prev_tick):
         """Runs in the pigpio callback thread, at the frame-start edge.
@@ -174,18 +209,18 @@ class LancGpio:
         # Preferred path: C helper reacts to the actual edge with ~20us
         # latency and drives the bits itself (immune to Python callback
         # latency and camera period jitter). One frame per command.
-        if self._ensure_helper():
-            try:
-                self._tx_fifo.write(f"{c0 & 0xFF:02x} {c1 & 0xFF:02x} 1\n")
-                self.sends += 1
-                self._tx_done_mono = time.monotonic() + 0.025
-            except Exception:
-                pass
+        # NEVER do FIFO/helper work here — this runs in the pigpio callback
+        # thread; any block kills all RX. Queue it for the writer thread.
+        if self._tx_ok:
+            self._txq.put((c0 & 0xFF, c1 & 0xFF))
+            self.sends += 1
+            self._tx_done_mono = time.monotonic() + 0.025
             with self._lock:
                 self.cmd_frames_left = frames_left - 1
                 if self.cmd_frames_left == 0:
                     self.cmd = [0x00, 0x00]
             return
+        self._start_writer()  # kicks off helper setup off-thread
         now_rel = (time.monotonic() - self._tick_offset) * 1e6
         T = (tick - prev_tick) & 0xFFFFFFFF if prev_tick is not None else 19050
         if not (15000 < T < 25000):
