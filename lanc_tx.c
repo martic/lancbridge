@@ -162,16 +162,19 @@ static void drive_frame(unsigned c0, unsigned c1)
     if (wait_sync(&t0) != 0)
         return;
 
-    /* byte 0: data bits land at t0 + (1..8)*104us */
+    /* byte 0: transitions at slot boundaries. ioctl cost is ~57-64us per
+     * set_value, so schedule each transition ~57us BEFORE the boundary:
+     * first bit at t0+104-57, then every 104us. */
     set_output();
     struct timespec rel = t0;
+    ts_add_us(&rel, BIT_US - 57);
     for (int i = 0; i < 8; i++) {
-        ts_add_us(&rel, BIT_US);
         sleep_until(&rel);
+        set_drive_bit((c0 >> i) & 1);
         now_ts(&nw);
         late = ts_us(&nw) - ts_us(&rel);
         fprintf(stderr, "b0.%i late=%ldus\n", i, late);
-        set_drive_bit((c0 >> i) & 1);
+        ts_add_us(&rel, BIT_US);
     }
     set_input(); /* stop bit: line released, floats high */
 
@@ -179,10 +182,11 @@ static void drive_frame(unsigned c0, unsigned c1)
     if (wait_event(0, 600, &t1) != 0)
         return;
     set_output();
+    ts_add_us(&t1, BIT_US - 57);
     for (int i = 0; i < 8; i++) {
-        ts_add_us(&t1, BIT_US);
         sleep_until(&t1);
         set_drive_bit((c1 >> i) & 1);
+        ts_add_us(&t1, BIT_US);
     }
     set_input();
 }
