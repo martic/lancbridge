@@ -66,6 +66,10 @@ class LancGpio:
         self._lock = threading.Lock()
         self._start_event = threading.Event()
         self._last_fall = None
+        self._tick_offset = None
+        self._ema_lateness = None
+        self._pad_used = 0
+        self._lateness_us = 0
         self._last_frame_tick = None
         self._wave_id = None
         self._wave_cmd = None
@@ -105,14 +109,22 @@ class LancGpio:
 
     def _on_frame_start(self, tick):
         """Runs in the pigpio callback thread, at the frame-start edge."""
-        lateness = (time.monotonic() - tick * 1e-6) * 1e6
+        if self._tick_offset is None:
+            self._tick_offset = time.monotonic() - self.pi_tx.get_current_tick() * 1e-6
+        lateness = (time.monotonic() - self._tick_offset) * 1e6 - tick
         with self._lock:
             frames_left = self.cmd_frames_left
             wid = self._wave_id
-            if frames_left == getattr(self, '_cmd_total', None):
-                print(f"LANC tx: lateness={lateness:.0f}us", flush=True)
         self._lateness_us = lateness
-        if not frames_left or wid is None:
+        self._ema_lateness = (self._ema_lateness or lateness) * 0.8 + lateness * 0.2
+        pad = max(0, min(104, 104 - self._ema_lateness))
+        if wid is not None and abs(pad - getattr(self, '_pad_used', -1)) > 30:
+            with self._lock:
+                self._build_wave(pad)
+                wid = self._wave_id
+        if frames_left == getattr(self, '_cmd_total', None):
+            print(f"LANC tx: lateness={lateness:.0f}us pad={pad:.0f}us", flush=True)
+        if not frames_left or self._wave_id is None:
             return
         self.pi_tx.set_mode(self.gpio, pigpio.OUTPUT)
         self.pi_tx.wave_send_once(wid)
@@ -124,16 +136,19 @@ class LancGpio:
                 self._build_wave()
 
     # ---- waveform for the 2 command bytes -----------------------------------
-    def _build_wave(self):
+    def _build_wave(self, pad_us=0):
         # The camera drives the frame sync AND every byte's start/stop bits
         # (idle capture shows L105 before all 8 bytes). The remote therefore
         # injects ONLY the 16 data bits: byte0 data at bits 1-8, byte1 data at
         # bits 11-18, staying HIGH (blocked = no effect) across the camera's
         # stop/start bits at bit 0, 9, 10 and 19.
         MASK = 1 << self.gpio
+        self._pad_used = pad_us
         c0, c1 = self.cmd
         order = getattr(self, '_bit_order', 'lsb')
         seq = []
+        if pad_us > 0:
+            seq.append((0, MASK, int(pad_us)))  # latency pad: line released
         for byte in (c0, c1):
             for i in range(8):
                 bit = 1 if byte & (1 << i) else 0
