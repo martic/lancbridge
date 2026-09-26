@@ -32,7 +32,7 @@ except ImportError:
 BIT_US = 104            # LANC bit time
 BIT_LO_LO_US = 60       # a single data-bit low
 BIT_LO_HI_US = 300
-FRAME_MIN_GAP_US = 15000 # sync-to-sync period ~19ms; camera's mid-frame lows are only ~7ms after sync
+FRAME_MIN_GAP_US = 9000 # true max fall-to-fall gap across the frame boundary is ~12.6ms (byte7 fall -> next sync); mid-frame falls are ~1.04ms apart
 ONE_SHOT_FRAMES = 5     # frames a one-shot command is repeated
 HOLD_TIMEOUT_FRAMES = 240  # ~5s safety for hold commands
 
@@ -354,7 +354,7 @@ class LancGpio:
         for idx, (tick, level) in enumerate(edges):
             if prev is not None and level == 0:
                 gap = (tick - prev[0]) & 0xFFFFFFFF
-                if prev[1] == 1 and gap >= 15000:
+                if prev[1] == 1 and gap >= 9000:
                     # sync fall; find the next rising edge
                     rise = None
                     for j in range(idx + 1, len(edges)):
