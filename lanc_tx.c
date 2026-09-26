@@ -50,7 +50,7 @@ static struct gpiod_line_config *make_cfg(int input)
     if (input) {
         gpiod_line_settings_set_direction(s, GPIOD_LINE_DIRECTION_INPUT);
         gpiod_line_settings_set_edge_detection(s, GPIOD_LINE_EDGE_BOTH);
-        gpiod_line_settings_set_event_clock(s, GPIOD_LINE_EVENT_CLOCK_MONOTONIC);
+        gpiod_line_settings_set_event_clock(s, GPIOD_LINE_CLOCK_MONOTONIC);
     } else {
         gpiod_line_settings_set_direction(s, GPIOD_LINE_DIRECTION_OUTPUT);
         gpiod_line_settings_set_drive(s, GPIOD_LINE_DRIVE_OPEN_DRAIN);
