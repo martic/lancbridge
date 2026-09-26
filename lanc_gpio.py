@@ -425,6 +425,23 @@ def build_server(lanc: LancGpio):
                            200 if q.get("dir") else 400)
             elif u.path == "/stop":
                 self._json(lanc.dispatch(action="stop"))
+            elif u.path == "/forcelow":
+                # Electrical reachability test: hold the GPIO hard LOW for
+                # N seconds. If the diode path conducts GPIO->line, the
+                # camera's transmission must corrupt (its bytes collapse);
+                # if the frames stay clean, TX cannot reach the line.
+                secs = max(0.5, min(5.0, float(q.get("secs", 2))))
+                try:
+                    self._json({"held_low_for": secs})
+                    self.wfile.flush()
+                except Exception:
+                    pass
+                lanc.pi_tx.set_mode(lanc.gpio, pigpio.OUTPUT)
+                lanc.pi_tx.write(lanc.gpio, 0)
+                time.sleep(secs)
+                lanc.pi_tx.write(lanc.gpio, 1)
+                time.sleep(0.05)
+                lanc.pi_tx.set_mode(lanc.gpio, pigpio.INPUT)
             elif u.path == "/debug":
                 try:
                     c0 = int(q["c0"], 16); c1 = int(q["c1"], 16)
