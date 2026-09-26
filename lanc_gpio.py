@@ -70,6 +70,9 @@ class LancGpio:
         self._ema_lateness = None
         self._pad_used = 0
         self._lateness_us = 0
+        self._d1 = 300            # wave-start latency estimate (us)
+        self._pending_rise_tick = None
+        self._period_us = 19050
         self._last_frame_tick = None
         self._wave_id = None
         self._wave_cmd = None
@@ -95,9 +98,10 @@ class LancGpio:
             if self._last_frame_tick is not None:
                 gap = (tick - self._last_frame_tick) & 0xFFFFFFFF
                 if gap >= FRAME_MIN_GAP_US:
+                    prev_tick = self._last_frame_tick
                     self._last_frame_tick = tick
                     self.connected = True
-                    self._on_frame_start(tick)
+                    self._on_frame_start(tick, prev_tick)
             else:
                 self._last_frame_tick = tick
             self._last_fall = tick
@@ -106,49 +110,77 @@ class LancGpio:
         width = (tick - self._last_fall) & 0xFFFFFFFF if self._last_fall is not None else 0
         if BIT_LO_LO_US <= width <= BIT_LO_HI_US:
             self._start_event.set()
+        # servo: rendered rise of our transmitted low-run vs expectation
+        pend = self._pending_rise_tick
+        if pend is not None:
+            self._pending_rise_tick = None
+            if width > BIT_LO_HI_US and abs(tick - pend) < 6000:
+                err = (tick - pend) & 0xFFFFFFFF
+                if err > 30000000:
+                    err -= 4294967296
+                self._d1 = max(0, self._d1 + max(-500, min(500, err)))
 
-    def _on_frame_start(self, tick):
-        """Runs in the pigpio callback thread, at the frame-start edge."""
+    def _on_frame_start(self, tick, prev_tick):
+        """Runs in the pigpio callback thread, at the frame-start edge.
+        We wake ~1ms late (Python callback latency), so we can't hit THIS
+        frame's bit 0. Instead we schedule the data for the NEXT frame:
+        wave = [HIGH delay][8 data bits][HIGH stop/start][8 data bits][tail],
+        where delay lands the first data bit exactly at (next_start + 104us).
+        The RX edge callback servos self._d1 (wave-start latency estimate)
+        against the rendered rise of our first low-run."""
         if self._tick_offset is None:
             self._tick_offset = time.monotonic() - self.pi_tx.get_current_tick() * 1e-6
-        lateness = (time.monotonic() - self._tick_offset) * 1e6 - tick
         with self._lock:
             frames_left = self.cmd_frames_left
-            wid = self._wave_id
-        self._lateness_us = lateness
-        self._ema_lateness = (self._ema_lateness or lateness) * 0.8 + lateness * 0.2
-        pad = max(0, min(104, 104 - self._ema_lateness))
-        if wid is not None and abs(pad - getattr(self, '_pad_used', -1)) > 30:
-            with self._lock:
-                self._build_wave(pad)
-                wid = self._wave_id
-        if frames_left == getattr(self, '_cmd_total', None):
-            print(f"LANC tx: lateness={lateness:.0f}us pad={pad:.0f}us", flush=True)
-        if not frames_left or self._wave_id is None:
+            c0, c1 = self.cmd
+        if not frames_left:
+            return
+        now_rel = (time.monotonic() - self._tick_offset) * 1e6
+        T = (tick - prev_tick) & 0xFFFFFFFF if prev_tick is not None else 19050
+        if not (15000 < T < 25000):
+            T = 19050
+        self._period_us = T
+        D = T + BIT_US - (now_rel - tick) - self._d1
+        if D < 1000:
+            return  # too close to the next frame to be useful
+        self._build_wave(int(D), c0, c1)
+        wid = self._wave_id
+        if wid is None:
             return
         self.pi_tx.set_mode(self.gpio, pigpio.OUTPUT)
         self.pi_tx.wave_send_once(wid)
         self.sends += 1
+        # servo reference: expected rise of our first merged low run.
+        # count leading zero DATA bits of byte0 (LSB-first); rise = the end
+        # of the camera's sync low (1 bit) + our leading zeros.
+        first = c0 & 0xFF
+        lead = 0
+        for i in range(8):
+            if first & (1 << i):
+                break
+            lead += 1
+        if 0 < lead < 8:
+            self._pending_rise_tick = (tick + T + (1 + lead) * BIT_US) & 0xFFFFFFFF
         with self._lock:
             self.cmd_frames_left = frames_left - 1
             if self.cmd_frames_left == 0:
                 self.cmd = [0x00, 0x00]
-                self._build_wave()
 
     # ---- waveform for the 2 command bytes -----------------------------------
-    def _build_wave(self, pad_us=0):
-        # The camera drives the frame sync AND every byte's start/stop bits
-        # (idle capture shows L105 before all 8 bytes). The remote therefore
-        # injects ONLY the 16 data bits: byte0 data at bits 1-8, byte1 data at
-        # bits 11-18, staying HIGH (blocked = no effect) across the camera's
-        # stop/start bits at bit 0, 9, 10 and 19.
+    def _build_wave(self, delay_us=0, c0=None, c1=None):
+        # wave = [HIGH delay_us][8 data bits][HIGH 104 (camera stop+start)]
+        #        [8 data bits][HIGH tail]. Data lands at the NEXT frame's
+        # bit slots 1-8 and 11-18; the delay absorbs our callback latency.
+        if c0 is None or c1 is None:
+            with self._lock:
+                c0, c1 = self.cmd
         MASK = 1 << self.gpio
-        self._pad_used = pad_us
-        c0, c1 = self.cmd
+        c0 &= 0xFF
+        c1 &= 0xFF
         order = getattr(self, '_bit_order', 'lsb')
         seq = []
-        if pad_us > 0:
-            seq.append((0, MASK, int(pad_us)))  # latency pad: line released
+        if delay_us > 0:
+            seq.append((0, MASK, int(delay_us)))
         for byte in (c0, c1):
             for i in range(8):
                 bit = 1 if byte & (1 << i) else 0
