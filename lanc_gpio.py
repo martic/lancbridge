@@ -355,16 +355,33 @@ class LancGpio:
             if prev is not None and level == 0:
                 gap = (tick - prev[0]) & 0xFFFFFFFF
                 if prev[1] == 1 and gap >= 9000:
-                    # sync fall; find the next rising edge
-                    rise = None
-                    for j in range(idx + 1, len(edges)):
-                        if edges[j][1] == 1:
-                            rise = edges[j][0]
-                            break
-                    row = {"sync": tick, "lowrun": None if rise is None else (rise - tick) & 0xFFFFFFFF}
+                    sync_tick = tick
+                    # reconstruct the 20-bit window after sync: sample the
+                    # line level mid-slot for bits 1..19, decode bytes 0-1
+                    def level_at(t):
+                        cur = 1
+                        for tt, lv in edges:
+                            if tt >= t:
+                                break
+                            cur = lv
+                        return cur
+                    bits = []
+                    for k in range(1, 20):
+                        t = sync_tick + k * BIT_US + BIT_US // 2
+                        bits.append(level_at(t))
+                    b0 = 0
+                    for i in range(8):
+                        if not bits[i]:
+                            b0 |= 1 << i
+                    b1 = 0
+                    for i in range(8):
+                        if not bits[10 + i]:
+                            b1 |= 1 << i
+                    row = {"sync": sync_tick,
+                           "wire": [b0, b1],
+                           "bits": ''.join('1' if b else '0' for b in bits)}
                     if 0 < lead < 8:
                         row["expect"] = (1 + lead) * BIT_US
-                        row["err"] = None if rise is None else ((rise - tick) & 0xFFFFFFFF) - (1 + lead) * BIT_US
                     out.append(row)
             prev = (tick, level)
         return {"cmd": f"{b:02x}{c1 & 0xFF:02x}", "lead_zeros": lead,
