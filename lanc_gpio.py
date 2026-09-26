@@ -74,6 +74,8 @@ class LancGpio:
         self._pending_rise_tick = None
         self._period_us = 19050
         self._tx_done_mono = None
+        self._dbg = None
+        self._dbg_edges = []
         self._last_frame_tick = None
         self._wave_id = None
         self._wave_cmd = None
@@ -90,6 +92,8 @@ class LancGpio:
 
     # ---- frame-start detection + transmit ------------------------------------
     def _edge(self, gpio, level, tick):
+        if self._dbg is not None:
+            self._dbg_edges.append((tick, level))
         if level == 0:
             # FALLING edge: a frame's first bit begins HERE. If the previous
             # frame start was >=5ms ago (inter-frame idle), this is it —
@@ -252,6 +256,42 @@ class LancGpio:
             self._cmd_total = self.cmd_frames_left
             self._build_wave()
 
+    def debug_run(self, c0, c1, frames=8):
+        """Self-measuring send: record edges during the hold, return the
+        rendered phase of our merged low-run vs expectation, per frame."""
+        lead = 0
+        b = c0 & 0xFF
+        for i in range(8):
+            if b & (1 << i):
+                break
+            lead += 1
+        self._dbg = frames + 3
+        self._dbg_edges = []
+        self.send_raw(c0, c1, frames)
+        time.sleep((frames + 3) * 0.021 + 0.06)
+        self._dbg = None
+        edges = self._dbg_edges
+        self._dbg_edges = []
+        out = []
+        prev = None
+        for idx, (tick, level) in enumerate(edges):
+            if prev is not None and level == 0:
+                gap = (tick - prev[0]) & 0xFFFFFFFF
+                if prev[1] == 1 and gap >= 15000:
+                    # sync fall; find the next rising edge
+                    rise = None
+                    for j in range(idx + 1, len(edges)):
+                        if edges[j][1] == 1:
+                            rise = edges[j][0]
+                            break
+                    row = {"sync": tick, "lowrun": None if rise is None else (rise - tick) & 0xFFFFFFFF}
+                    if 0 < lead < 8:
+                        row["expect"] = (1 + lead) * BIT_US
+                        row["err"] = None if rise is None else ((rise - tick) & 0xFFFFFFFF) - (1 + lead) * BIT_US
+                    out.append(row)
+            prev = (tick, level)
+        return {"cmd": f"{b:02x}{c1 & 0xFF:02x}", "lead_zeros": lead, "frames": out}
+
     # ---- command dispatch -----------------------------------------------------
     def dispatch(self, action=None, kind=None, direction=None, speed="slow", state="on"):
         if kind:
@@ -307,6 +347,14 @@ def build_server(lanc: LancGpio):
                            200 if q.get("dir") else 400)
             elif u.path == "/stop":
                 self._json(lanc.dispatch(action="stop"))
+            elif u.path == "/debug":
+                try:
+                    c0 = int(q["c0"], 16); c1 = int(q["c1"], 16)
+                    frames = max(2, min(32, int(q.get("frames", 8))))
+                except (ValueError, KeyError):
+                    self._json({"error": "usage: /debug?c0=18&c1=33&frames=8"}, 400)
+                else:
+                    self._json(lanc.debug_run(c0, c1, frames))
             elif u.path == "/cmd":
                 self._json(lanc.dispatch(action=q.get("action")))
             elif u.path == "/raw":
