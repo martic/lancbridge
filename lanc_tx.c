@@ -98,8 +98,10 @@ static void set_output(void)
 
 static void set_drive_bit(int v)
 {
+    /* Empirical: with this setup the wire renders the complement unless
+     * bit=1 asserts the open-drain (pulls LOW). Bit 1 must be HIGH. */
     gpiod_line_request_set_value(req, GPIO,
-        v ? GPIOD_LINE_VALUE_INACTIVE : GPIOD_LINE_VALUE_ACTIVE);
+        v ? GPIOD_LINE_VALUE_ACTIVE : GPIOD_LINE_VALUE_INACTIVE);
 }
 
 /* wait for an edge; returns 0 on match, 1 on timeout, -1 on error */
