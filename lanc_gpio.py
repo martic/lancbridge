@@ -350,6 +350,7 @@ class LancGpio:
         edges = self._dbg_edges
         self._dbg_edges = []
         out = []
+        wire_payload_seen = 0
         prev = None
         for idx, (tick, level) in enumerate(edges):
             if prev is not None and level == 0:
@@ -380,11 +381,12 @@ class LancGpio:
                     row = {"sync": sync_tick,
                            "wire": [b0, b1],
                            "bits": ''.join('1' if b else '0' for b in bits)}
-                    if len(out) < 3:
+                    if wire_payload_seen < 3:
                         # raw run-length waveform of the first 2100us after
                         # sync (both command bytes), for unambiguous decode
+                        wire_payload_seen += 1
                         runs = []
-                        cur_t, cur_lvl = tick, 1
+                        cur_t, cur_lvl = tick, 0  # line is LOW at sync fall
                         for tt, lv in edges:
                             if tt <= tick or tt > tick + 2100:
                                 continue
