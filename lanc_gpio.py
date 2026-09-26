@@ -76,6 +76,9 @@ class LancGpio:
         self._tx_done_mono = None
         self._dbg = None
         self._dbg_edges = []
+        self._tx_fifo = None
+        self._tx_proc = None
+        self._tx_fifo_path = '/tmp/lanc_tx.fifo'
         self._last_frame_tick = None
         self._wave_id = None
         self._wave_cmd = None
@@ -125,6 +128,34 @@ class LancGpio:
                     err -= 4294967296
                 self._d1 = max(0, self._d1 + max(-500, min(500, err)))
 
+    def _ensure_helper(self):
+        """Launch the C transmitter (libgpiod, ~20us edge latency). Returns
+        True if the helper is alive and the FIFO is open."""
+        if self._tx_fifo is not None and self._tx_proc is not None \
+                and self._tx_proc.poll() is None:
+            return True
+        try:
+            import os as _os
+            import subprocess as _sp
+            binp = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), 'lanc_tx')
+            if not _os.path.exists(binp):
+                return False
+            fifo = self._tx_fifo_path
+            try:
+                _os.mkfifo(fifo)
+            except FileExistsError:
+                pass
+            self._tx_proc = _sp.Popen([binp], stdin=_sp.DEVNULL,
+                                      stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
+            self._tx_fifo = open(fifo, 'w', buffering=1)
+            time.sleep(0.05)
+            print("LANC tx: using C helper (libgpiod)", flush=True)
+            return self._tx_proc.poll() is None
+        except Exception as e:
+            print(f"LANC tx helper setup failed: {e}", flush=True)
+            self._tx_fifo = None
+            return False
+
     def _on_frame_start(self, tick, prev_tick):
         """Runs in the pigpio callback thread, at the frame-start edge.
         We wake ~1ms late (Python callback latency), so we can't hit THIS
@@ -139,6 +170,21 @@ class LancGpio:
             frames_left = self.cmd_frames_left
             c0, c1 = self.cmd
         if not frames_left:
+            return
+        # Preferred path: C helper reacts to the actual edge with ~20us
+        # latency and drives the bits itself (immune to Python callback
+        # latency and camera period jitter). One frame per command.
+        if self._ensure_helper():
+            try:
+                self._tx_fifo.write(f"{c0 & 0xFF:02x} {c1 & 0xFF:02x} 1\n")
+                self.sends += 1
+                self._tx_done_mono = time.monotonic() + 0.025
+            except Exception:
+                pass
+            with self._lock:
+                self.cmd_frames_left = frames_left - 1
+                if self.cmd_frames_left == 0:
+                    self.cmd = [0x00, 0x00]
             return
         now_rel = (time.monotonic() - self._tick_offset) * 1e6
         T = (tick - prev_tick) & 0xFFFFFFFF if prev_tick is not None else 19050
