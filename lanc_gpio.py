@@ -83,6 +83,7 @@ class LancGpio:
         self._tx_writer_started = False
         import queue
         self._txq = queue.Queue()
+        self._idle_left = 0
         self._last_frame_tick = None
         self._wave_id = None
         self._wave_cmd = None
@@ -205,6 +206,13 @@ class LancGpio:
             frames_left = self.cmd_frames_left
             c0, c1 = self.cmd
         if not frames_left:
+            if self._idle_left > 0:
+                # idle lead-in: queue 00 00 frames before the command
+                with self._lock:
+                    self._idle_left -= 1
+                self._start_writer()
+                self._txq.put((0x00, 0x00))
+                self._tx_done_mono = time.monotonic() + 0.025
             return
         # Helper path — ALWAYS queue; the writer thread does the (blocking)
         # helper setup and FIFO I/O. The callback thread never blocks.
@@ -490,6 +498,16 @@ def build_server(lanc: LancGpio):
                     self._json({"error": "usage: /raw?c0=28&c1=35&frames=8"}, 400)
                     return
                 lanc._bit_order = 'msb' if q.get('order') == 'msb' else 'lsb'
+                # idle lead-in: some cameras only accept commands after
+                # seeing N frames of the remote's 00 00 idle first
+                try:
+                    idle = int(q.get("idle", 3))
+                except ValueError:
+                    idle = 3
+                if 0 < idle < 16:
+                    lanc._idle_left = idle
+                else:
+                    lanc._idle_left = 0
                 lanc.send_raw(c0, c1, frames)
                 self._json({"sent": f"{c0:02x}{c1:02x}", "frames": frames,
                             "order": lanc._bit_order})
