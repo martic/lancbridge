@@ -151,7 +151,7 @@ class LancGpio:
             except FileExistsError:
                 pass
             self._tx_proc = _sp.Popen([binp], stdin=_sp.DEVNULL,
-                                      stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
+                                      stdout=_sp.DEVNULL)  # stderr -> journal
             self._tx_fifo = open(fifo, 'w', buffering=1)
             time.sleep(0.05)
             if self._tx_proc.poll() is None:
