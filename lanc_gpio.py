@@ -180,7 +180,7 @@ class LancGpio:
         order = getattr(self, '_bit_order', 'lsb')
         seq = []
         if delay_us > 0:
-            seq.append((0, MASK, int(delay_us)))
+            seq.append((MASK, 0, int(delay_us)))  # released/high for the delay
         for byte in (c0, c1):
             for i in range(8):
                 bit = 1 if byte & (1 << i) else 0
