@@ -50,6 +50,7 @@ static struct gpiod_line_config *make_cfg(int input)
     if (input) {
         gpiod_line_settings_set_direction(s, GPIOD_LINE_DIRECTION_INPUT);
         gpiod_line_settings_set_edge_detection(s, GPIOD_LINE_EDGE_BOTH);
+        gpiod_line_settings_set_event_clock(s, GPIOD_LINE_EVENT_CLOCK_MONOTONIC);
     } else {
         gpiod_line_settings_set_direction(s, GPIOD_LINE_DIRECTION_OUTPUT);
         gpiod_line_settings_set_drive(s, GPIOD_LINE_DRIVE_OPEN_DRAIN);
@@ -124,7 +125,11 @@ static int wait_event(int want, long timeout_us, struct timespec *out)
             return -1;
         int got = gpiod_edge_event_get_event_type(ev) ==
                   GPIOD_EDGE_EVENT_FALLING_EDGE ? 0 : 1;
-        now_ts(out); /* ~10-20us from the true event */
+        /* use the kernel timestamp of the edge (ns) instead of sampling
+         * clock_gettime after the read (saves ~20us staleness) */
+        long long ns = gpiod_edge_event_get_timestamp_ns(ev);
+        out->tv_sec = ns / 1000000000LL;
+        out->tv_nsec = ns % 1000000000LL;
         if (got == want)
             return 0;
     }
