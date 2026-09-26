@@ -367,7 +367,8 @@ class LancGpio:
                         row["err"] = None if rise is None else ((rise - tick) & 0xFFFFFFFF) - (1 + lead) * BIT_US
                     out.append(row)
             prev = (tick, level)
-        return {"cmd": f"{b:02x}{c1 & 0xFF:02x}", "lead_zeros": lead, "frames": out}
+        return {"cmd": f"{b:02x}{c1 & 0xFF:02x}", "lead_zeros": lead,
+                "edges_seen": len(edges), "frames": out}
 
     # ---- command dispatch -----------------------------------------------------
     def dispatch(self, action=None, kind=None, direction=None, speed="slow", state="on"):
