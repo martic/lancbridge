@@ -93,7 +93,7 @@ class LancGpio:
                 if gap >= FRAME_MIN_GAP_US:
                     self._last_frame_tick = tick
                     self.connected = True
-                    self._on_frame_start()
+                    self._on_frame_start(tick)
             else:
                 self._last_frame_tick = tick
             self._last_fall = tick
@@ -103,11 +103,15 @@ class LancGpio:
         if BIT_LO_LO_US <= width <= BIT_LO_HI_US:
             self._start_event.set()
 
-    def _on_frame_start(self):
+    def _on_frame_start(self, tick):
         """Runs in the pigpio callback thread, at the frame-start edge."""
+        lateness = (time.monotonic() - tick * 1e-6) * 1e6
         with self._lock:
             frames_left = self.cmd_frames_left
             wid = self._wave_id
+            if frames_left == getattr(self, '_cmd_total', None):
+                print(f"LANC tx: lateness={lateness:.0f}us", flush=True)
+        self._lateness_us = lateness
         if not frames_left or wid is None:
             return
         self.pi_tx.set_mode(self.gpio, pigpio.OUTPUT)
@@ -192,6 +196,7 @@ class LancGpio:
         with self._lock:
             self.cmd = [c0 & 0xFF, c1 & 0xFF]
             self.cmd_frames_left = max(1, frames)
+            self._cmd_total = self.cmd_frames_left
             self._build_wave()
 
     # ---- command dispatch -----------------------------------------------------
