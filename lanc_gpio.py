@@ -63,7 +63,7 @@ class LancGpio:
         self.last_frame = None
         self.recording = False
         self.connected = False
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self._start_event = threading.Event()
         self._last_fall = None
         self._tick_offset = None
