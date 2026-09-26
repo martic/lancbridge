@@ -73,6 +73,7 @@ class LancGpio:
         self._d1 = 300            # wave-start latency estimate (us)
         self._pending_rise_tick = None
         self._period_us = 19050
+        self._tx_done_mono = None
         self._last_frame_tick = None
         self._wave_id = None
         self._wave_cmd = None
@@ -150,6 +151,7 @@ class LancGpio:
         self.pi_tx.set_mode(self.gpio, pigpio.OUTPUT)
         self.pi_tx.wave_send_once(wid)
         self.sends += 1
+        self._tx_done_mono = time.monotonic() + (D + 2600) / 1e6
         # servo reference: expected rise of our first merged low run.
         # count leading zero DATA bits of byte0 (LSB-first); rise = the end
         # of the camera's sync low (1 bit) + our leading zeros.
@@ -222,22 +224,26 @@ class LancGpio:
             self._start_event.clear()
             self.connected = True
 
-            # The callback either just transmitted (wave ~2.08ms, then pin
-            # must go back to INPUT before the camera drives bytes 2-7) or a
-            # frame passed command-free. Wait out the 2-byte slot, then read.
-            deadline = time.monotonic() + 0.00208
-            while time.monotonic() < deadline:
-                if not self.pi_tx.wave_tx_busy():
-                    break
-                time.sleep(0.0002)
+            # The TX wave now spans delay+2.08ms (~21ms) and lands its data
+            # bits in the NEXT frame's slots. It ends right at the camera's
+            # byte-2 start bit of that frame. Wait for the wave to finish
+            # BEFORE switching the pin back to INPUT (a mode change cancels
+            # an active wave).
+            t_done = self._tx_done_mono
+            while t_done is not None and time.monotonic() < t_done:
+                time.sleep(0.0005)
+            self._tx_done_mono = None
             self.pi_tx.set_mode(self.gpio, pigpio.INPUT)
-            # we are now at bit 20 = camera's byte-2 start bit
-
-            with self._lock:
-                c0, c1 = self.cmd
-            frame = [c0, c1] + [self._recv_byte() for _ in range(6)]
-            self.last_frame = frame
-            self.recording = (frame[5] & 0xF0) == 0x30
+            # we are now at the camera's byte-2 start bit; read bytes 2-7
+            frame = None
+            try:
+                with self._lock:
+                    c0, c1 = self.cmd
+                frame = [c0, c1] + [self._recv_byte() for _ in range(6)]
+                self.last_frame = frame
+                self.recording = (frame[5] & 0xF0) == 0x30
+            except Exception:
+                import traceback; traceback.print_exc()
 
     def send_raw(self, c0, c1, frames=8):
         with self._lock:
