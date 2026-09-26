@@ -206,21 +206,17 @@ class LancGpio:
             c0, c1 = self.cmd
         if not frames_left:
             return
-        # Preferred path: C helper reacts to the actual edge with ~20us
-        # latency and drives the bits itself (immune to Python callback
-        # latency and camera period jitter). One frame per command.
-        # NEVER do FIFO/helper work here — this runs in the pigpio callback
-        # thread; any block kills all RX. Queue it for the writer thread.
-        if self._tx_ok:
-            self._txq.put((c0 & 0xFF, c1 & 0xFF))
-            self.sends += 1
-            self._tx_done_mono = time.monotonic() + 0.025
-            with self._lock:
-                self.cmd_frames_left = frames_left - 1
-                if self.cmd_frames_left == 0:
-                    self.cmd = [0x00, 0x00]
-            return
-        self._start_writer()  # kicks off helper setup off-thread
+        # Helper path — ALWAYS queue; the writer thread does the (blocking)
+        # helper setup and FIFO I/O. The callback thread never blocks.
+        self._start_writer()
+        self._txq.put((c0 & 0xFF, c1 & 0xFF))
+        self.sends += 1
+        self._tx_done_mono = time.monotonic() + 0.025
+        with self._lock:
+            self.cmd_frames_left = frames_left - 1
+            if self.cmd_frames_left == 0:
+                self.cmd = [0x00, 0x00]
+        return
         now_rel = (time.monotonic() - self._tick_offset) * 1e6
         T = (tick - prev_tick) & 0xFFFFFFFF if prev_tick is not None else 19050
         if not (15000 < T < 25000):
