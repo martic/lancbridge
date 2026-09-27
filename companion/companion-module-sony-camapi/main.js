@@ -165,6 +165,62 @@ class SonyCamApi extends InstanceBase {
 					self.checkFeedbacks('recording')
 				},
 			},
+			touch_af: {
+				name: 'Touch AF (set focus point)',
+				options: [
+					{
+						type: 'number',
+						id: 'x',
+						label: 'X position (%)',
+						min: 0,
+						max: 100,
+						step: 1,
+						default: 50,
+					},
+					{
+						type: 'number',
+						id: 'y',
+						label: 'Y position (%)',
+						min: 0,
+						max: 100,
+						step: 1,
+						default: 50,
+					},
+				],
+				async callback(action) {
+					const x = Math.round(action.options.x * 100)
+					const y = Math.round(action.options.y * 100)
+					const r = await self.rpc('setTouchAFPosition', [x, y])
+					self._lastResult.af = r
+				},
+			},
+			touch_af_cancel: {
+				name: 'Touch AF Cancel',
+				options: [],
+				async callback() {
+					const r = await self.rpc('cancelTouchAFPosition')
+					self._lastResult.af = r
+				},
+			},
+			focus_mode: {
+				name: 'Set Focus Mode (camera/setFocusMode)',
+				options: [
+					{
+						type: 'dropdown',
+						id: 'mode',
+						label: 'Mode',
+						choices: [
+							{ id: 'AF', label: 'AF (auto)' },
+							{ id: 'MF', label: 'MF (manual)' },
+						],
+						default: 'AF',
+					},
+				],
+				async callback(action) {
+					const r = await self.rpc('setFocusMode', [action.options.mode], '1.1')
+					self._lastResult.focusMode = r
+				},
+			},
 			apis: {
 				name: 'Get Available API List (log)',
 				options: [],
@@ -226,6 +282,56 @@ class SonyCamApi extends InstanceBase {
 					},
 				],
 				steps: [{ down: [{ actionId: 'rec_toggle', options: {} }], up: [] }],
+			},
+			af_center: {
+				name: 'AF center point',
+				type: 'button',
+				style: { text: 'AF\\nCEN', size: '14', bgcolor: 0x228822 },
+				steps: [
+					{
+						down: [{ actionId: 'touch_af', options: { x: 50, y: 50 } }],
+						up: [],
+					},
+				],
+			},
+			af_left: {
+				name: 'AF left third point',
+				type: 'button',
+				style: { text: 'AF\\nL', size: '14', bgcolor: 0x228822 },
+				steps: [
+					{
+						down: [{ actionId: 'touch_af', options: { x: 25, y: 50 } }],
+						up: [],
+					},
+				],
+			},
+			af_right: {
+				name: 'AF right third point',
+				type: 'button',
+				style: { text: 'AF\\nR', size: '14', bgcolor: 0x228822 },
+				steps: [
+					{
+						down: [{ actionId: 'touch_af', options: { x: 75, y: 50 } }],
+						up: [],
+					},
+				],
+			},
+			af_closeup: {
+				name: 'AF close-up (lower center, large area)',
+				type: 'button',
+				style: { text: 'AF\\nCLOSE', size: '12', bgcolor: 0x228822 },
+				steps: [
+					{
+						down: [{ actionId: 'touch_af', options: { x: 50, y: 65 } }],
+						up: [],
+					},
+				],
+			},
+			af_cancel: {
+				name: 'AF cancel (back to wide AF)',
+				type: 'button',
+				style: { text: 'AF\\nWIDE', size: '14', bgcolor: 0x555555 },
+				steps: [{ down: [{ actionId: 'touch_af_cancel', options: {} }], up: [] }],
 			},
 		}
 	}
