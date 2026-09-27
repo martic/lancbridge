@@ -1,0 +1,22 @@
+{
+	"name": "sony-camapi",
+	"shortname": "Sony Cam",
+	"description": "Sony Camera Remote API (ScalarWebAPI v1) control — zoom, record, status for HXR/NXCAM cameras",
+	"version": "0.1.0",
+	"api": "1.2.0",
+	"type": "module",
+	"keywords": ["Sony", "Camera", "LANC", "Zoom", "Record"],
+	"manufacturer": "Sony",
+	"product": "Camera Remote API",
+	"author": "Marty",
+	"repository": { "type": "git", "url": "" },
+	"license": "MIT",
+	"bugs": { "url": "" },
+	"runtime": {
+		"type": "node18",
+		"api": "v1.2.0",
+		"api_version": "1.2.0",
+		"entrypoint": "main.js"
+	},
+	"legacy": []
+}
