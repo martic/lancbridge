@@ -44,7 +44,7 @@ class SonyCamApi extends InstanceBase {
 		this.setActionDefinitions(this.buildActions())
 		this.setFeedbackDefinitions(this.buildFeedbacks())
 		this.setVariableDefinitions(this.buildVariables())
-		this.setPresetDefinitions(this.buildPresets())
+		this.setPresetDefinitions(this.buildPresetCategories(), this.buildPresets())
 		this.updateStatus(InstanceStatus.Ok)
 		this.startPolling()
 	}
@@ -227,6 +227,35 @@ class SonyCamApi extends InstanceBase {
 				},
 			},
 		}
+	}
+
+	buildPresetCategories() {
+		return [
+			{
+				id: 'sony_cam',
+				name: 'Sony HXR-MC2500 (WiFi)',
+				description: 'Zoom and AF control via Camera Remote API',
+				definitions: [
+					{
+						id: 'sony_cam_controls',
+						type: 'simple',
+						name: 'Camera controls',
+						description: 'Zoom in/out, AF presets',
+						presets: [
+							'zoom_in',
+							'zoom_out',
+							'zoom_in_fast',
+							'rec',
+							'af_center',
+							'af_left',
+							'af_right',
+							'af_closeup',
+							'af_cancel',
+						],
+					},
+				],
+			},
+		]
 	}
 
 	buildPresets() {
