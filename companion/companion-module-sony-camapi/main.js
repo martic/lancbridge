@@ -2,7 +2,7 @@
  * Endpoint: http://<camera>:10000/ (auto-cached from camapi.py discovery or
  * entered manually). JSON-RPC POST per Sony's public Camera Remote API spec.
  */
-import { InstanceBase, InstanceStatus } from '@companion-module/base'
+import { InstanceBase, InstanceStatus, combineRgb } from '@companion-module/base'
 import http from 'http'
 import url from 'url'
 
@@ -259,109 +259,70 @@ class SonyCamApi extends InstanceBase {
 	}
 
 	buildPresets() {
-		const self = this
-		return {
-			zoom_in: {
-				name: 'Zoom in (hold)',
-				category: 'Zoom',
-				type: 'button',
-				style: { text: 'ZOOM+', size: '18', bgcolor: 0x114477 },
-				feedbacks: [],
-				steps: [
-					{
-						down: [{ actionId: 'zoom', options: { dir: 'in', state: 'start', speed: 2 } }],
-						up: [{ actionId: 'zoom', options: { dir: 'in', state: 'stop' } }],
-					},
-				],
-			},
-			zoom_out: {
-				name: 'Zoom out (hold)',
-				type: 'button',
-				style: { text: 'ZOOM-', size: '18', bgcolor: 0x114477 },
-				feedbacks: [],
-				steps: [
-					{
-						down: [{ actionId: 'zoom', options: { dir: 'out', state: 'start', speed: 1 } }],
-						up: [{ actionId: 'zoom', options: { dir: 'out', state: 'stop' } }],
-					},
-				],
-			},
-			zoom_in_fast: {
-				name: 'Zoom in fast (hold)',
-				type: 'button',
-				style: { text: 'ZOOM+', bgcolor: 0x2266aa },
-				steps: [
-					{
-						down: [{ actionId: 'zoom', options: { dir: 'in', state: 'start', speed: 5 } }],
-						up: [{ actionId: 'zoom', options: { dir: 'in', state: 'stop' } }],
-					},
-				],
-			},
-			rec: {
-				name: 'REC start/stop (red when recording)',
-				type: 'button',
-				style: { text: 'REC', size: '18', bgcolor: 0x800000 },
-				feedbacks: [
-					{
-						feedbackId: 'recording',
-						style: { bgcolor: 0xff0000, fgcolor: 0xffffff },
-					},
-				],
-				steps: [{ down: [{ actionId: 'rec_toggle', options: {} }], up: [] }],
-			},
-			af_center: {
-				name: 'AF center point',
-				type: 'button',
-				style: { text: 'AF\\nCEN', size: '14', bgcolor: 0x228822 },
-				steps: [
-					{
-						down: [{ actionId: 'touch_af', options: { x: 50, y: 50 } }],
-						up: [],
-					},
-				],
-			},
-			af_left: {
-				name: 'AF left third point',
-				type: 'button',
-				style: { text: 'AF\\nL', size: '14', bgcolor: 0x228822 },
-				steps: [
-					{
-						down: [{ actionId: 'touch_af', options: { x: 25, y: 50 } }],
-						up: [],
-					},
-				],
-			},
-			af_right: {
-				name: 'AF right third point',
-				type: 'button',
-				style: { text: 'AF\\nR', size: '14', bgcolor: 0x228822 },
-				steps: [
-					{
-						down: [{ actionId: 'touch_af', options: { x: 75, y: 50 } }],
-						up: [],
-					},
-				],
-			},
-			af_closeup: {
-				name: 'AF close-up (lower center, large area)',
-				type: 'button',
-				style: { text: 'AF\\nCLOSE', size: '12', bgcolor: 0x228822 },
-				steps: [
-					{
-						down: [{ actionId: 'touch_af', options: { x: 50, y: 65 } }],
-						up: [],
-					},
-				],
-			},
-			af_cancel: {
-				name: 'AF cancel (back to wide AF)',
-				type: 'button',
-				style: { text: 'AF\\nWIDE', size: '14', bgcolor: 0x555555 },
-				steps: [{ down: [{ actionId: 'touch_af_cancel', options: {} }], up: [] }],
-			},
+		const presets = {}
+		const mk = (id, name, text, bgcolor, steps, feedbacks) => {
+			presets[id] = {
+				name,
+				type: 'simple',
+				keywords: ['sony', 'camera', 'zoom'],
+				style: { text, size: 'auto', color: combineRgb(255, 255, 255), bgcolor },
+				steps,
+				feedbacks,
+			}
 		}
-	}
 
+		const grey = combineRgb(45, 45, 45)
+		const blue = combineRgb(30, 60, 160)
+		const green = combineRgb(30, 120, 30)
+		const darkred = combineRgb(120, 20, 20)
+
+		mk('zoom_in', 'Zoom in (hold)', 'ZOOM+', blue,
+			[{
+				down: [{ actionId: 'zoom', options: { dir: 'in', state: 'start', speed: 2 } }],
+				up: [{ actionId: 'zoom', options: { dir: 'in', state: 'stop' } }],
+			}],
+			[])
+
+		mk('zoom_out', 'Zoom out (hold)', 'ZOOM-', blue,
+			[{
+				down: [{ actionId: 'zoom', options: { dir: 'out', state: 'start', speed: 1 } }],
+				up: [{ actionId: 'zoom', options: { dir: 'out', state: 'stop' } }],
+			}],
+			[])
+
+		mk('zoom_in_fast', 'Zoom in fast (hold)', 'ZOOM ++', blue,
+			[{
+				down: [{ actionId: 'zoom', options: { dir: 'in', state: 'start', speed: 5 } }],
+				up: [{ actionId: 'zoom', options: { dir: 'in', state: 'stop' } }],
+			}],
+			[])
+
+		mk('rec', 'REC start/stop', 'REC', darkred,
+			[{ down: [{ actionId: 'rec_toggle', options: {} }], up: [] }],
+			[{ feedbackId: 'recording', options: {}, style: { bgcolor: combineRgb(255, 0, 0), color: combineRgb(255, 255, 255) } }])
+
+		mk('af_center', 'AF center point', 'AF\nCEN', green,
+			[{ down: [{ actionId: 'touch_af', options: { x: 50, y: 50 } }], up: [] }],
+			[])
+
+		mk('af_left', 'AF left third point', 'AF\nL', green,
+			[{ down: [{ actionId: 'touch_af', options: { x: 25, y: 50 } }], up: [] }],
+			[])
+
+		mk('af_right', 'AF right third point', 'AF\nR', green,
+			[{ down: [{ actionId: 'touch_af', options: { x: 75, y: 50 } }], up: [] }],
+			[])
+
+		mk('af_closeup', 'AF close-up (lower center)', 'AF\nCLOSE', green,
+			[{ down: [{ actionId: 'touch_af', options: { x: 50, y: 65 } }], up: [] }],
+			[])
+
+		mk('af_cancel', 'AF cancel (back to wide AF)', 'AF\nWIDE', grey,
+			[{ down: [{ actionId: 'touch_af_cancel', options: {} }], up: [] }],
+			[])
+
+		return presets
+	}
 	buildFeedbacks() {
 		const self = this
 		return {
