@@ -21,7 +21,7 @@ class SonyCamApi extends InstanceBase {
 				label: 'API endpoint URL',
 				tooltip: 'Full URL, e.g. http://192.168.5.10:10000/ — see camapi.py discover output',
 				width: 12,
-				default: 'http://192.168.5.10:10000/',
+				default: 'http://192.168.122.1:10000/sony/camera',
 				regex: '/^https?:\\/\\//',
 			},
 			{
@@ -55,8 +55,14 @@ class SonyCamApi extends InstanceBase {
 
 	rpc(method, params, version = '1.0') {
 		return new Promise((resolve) => {
-			const ep = (this.config.endpoint || '').replace(/\/?$/, '/')
-			const full = /\/camera\/?$/.test(ep) ? ep : ep + 'camera'
+			// Accept a bare base URL or a full one; the MC2500 always serves /sony/camera
+			let ep = (this.config.endpoint || '').trim().replace(/\/+$/, '')
+			if (/\/camera$/.test(ep)) {
+				// already a full endpoint (…/camera or …/sony/camera)
+			} else {
+				ep = ep + '/sony/camera'
+			}
+			const full = ep
 			const body = JSON.stringify({ method, params: params || [], id: 1, version })
 			const u = new url.URL(full)
 			const req = http.request(
