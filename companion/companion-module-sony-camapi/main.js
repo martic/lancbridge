@@ -348,11 +348,11 @@ class SonyCamApi extends InstanceBase {
 	}
 
 	buildVariables() {
-		return [
-			{ name: 'zoom_position', label: 'Zoom position (index)' },
-			{ name: 'recording', label: 'Recording (true/false)' },
-			{ name: 'last_error', label: 'Last API error' },
-		]
+		return {
+			zoom_position: { name: 'zoom_position', label: 'Zoom position (index)' },
+			recording: { name: 'recording', label: 'Recording (true/false)' },
+			last_error: { name: 'last_error', label: 'Last API error' },
+		}
 	}
 
 	startPolling() {
