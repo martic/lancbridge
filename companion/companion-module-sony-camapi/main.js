@@ -131,7 +131,8 @@ class SonyCamApi extends InstanceBase {
 						min: 1,
 						max: 7,
 						step: 0.5,
-						default: 1,
+						default: 2,
+						isVisible: () => false,
 					},
 				],
 				async callback(action) {
