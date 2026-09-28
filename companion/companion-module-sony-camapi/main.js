@@ -2,9 +2,9 @@
  * Endpoint: http://<camera>:10000/ (auto-cached from camapi.py discovery or
  * entered manually). JSON-RPC POST per Sony's public Camera Remote API spec.
  */
-const { InstanceBase, InstanceStatus, runEntrypoint } = require('@companion-module/base')
-const http = require('http')
-const url = require('url')
+import { InstanceBase, InstanceStatus } from '@companion-module/base'
+import http from 'http'
+import url from 'url'
 
 class SonyCamApi extends InstanceBase {
 	constructor(internal) {
@@ -382,4 +382,4 @@ class SonyCamApi extends InstanceBase {
 	}
 }
 
-runEntrypoint(SonyCamApi, [])
+export default SonyCamApi
