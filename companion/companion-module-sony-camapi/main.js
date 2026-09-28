@@ -36,6 +36,11 @@ class SonyCamApi extends InstanceBase {
 
 	async init(config) {
 		this.config = config
+		// 2014-era MC2500 remote session starts in still mode; switch to movie
+		// once at init so zoom/AF operate immediately
+		this.rpc('setShootMode', ['movie']).then((r) => {
+			this.log('info', 'setShootMode(movie): ' + JSON.stringify(r))
+		})
 		this.setActionDefinitions(this.buildActions())
 		this.setFeedbackDefinitions(this.buildFeedbacks())
 		this.setVariableDefinitions(this.buildVariables())
@@ -125,11 +130,8 @@ class SonyCamApi extends InstanceBase {
 					},
 				],
 				async callback(action) {
-					const speed = action.options.state === 'stop' ? undefined : String(action.options.speed)
-					const params = speed
-						? [action.options.dir, action.options.state, speed]
-						: [action.options.dir, action.options.state]
-					const r = await self.rpc('actZoom', params)
+					// 2014-era MC2500 firmware: actZoom takes exactly 2 params
+					const r = await self.rpc('actZoom', [action.options.dir, action.options.state])
 					self._lastResult.zoom = r
 				},
 			},

@@ -162,8 +162,12 @@ def cmd_apis(base):
     print(f'HTTP {st}')
     print(json.dumps(resp, indent=2))
 
-def cmd_zoom(base, direction, state, speed='1.0'):
-    st, resp = api_call(base, 'actZoom', [direction, state, speed], version='1.0')
+def cmd_zoom(base, direction, state, speed=None):
+    # 2014-era firmware (MC2500): exactly 2 params. Speed param only on newer fw.
+    params = [direction, state]
+    if speed:
+        params = [direction, state, speed]
+    st, resp = api_call(base, 'actZoom', params, version='1.0')
     print(f'HTTP {st}: {json.dumps(resp)}')
 
 def cmd_rec(base, action):
@@ -195,14 +199,19 @@ def main():
     elif cmd == 'probe':
         cmd_probe(sys.argv[2])
     else:
-        base = ensure_endpoint(sys.argv[2] if len(sys.argv) > 2 else None)
+        # commands that need the endpoint: first arg after cmd may BE the
+        # endpoint (http...), otherwise load the cached one
+        rest = sys.argv[2:]
+        base = None
+        if rest and rest[0].startswith('http'):
+            base = rest.pop(0)
+        base = ensure_endpoint(base)
         if cmd == 'apis':
             cmd_apis(base)
         elif cmd == 'zoom':
-            cmd_zoom(base, sys.argv[2], sys.argv[3],
-                     sys.argv[4] if len(sys.argv) > 4 else '1.0')
+            cmd_zoom(base, rest[0], rest[1], rest[2] if len(rest) > 2 else None)
         elif cmd == 'rec':
-            cmd_rec(base, sys.argv[2])
+            cmd_rec(base, rest[0])
         elif cmd == 'watch':
             cmd_watch(base)
         else:
