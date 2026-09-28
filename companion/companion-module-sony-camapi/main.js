@@ -124,17 +124,7 @@ class SonyCamApi extends InstanceBase {
 						],
 						default: 'start',
 					},
-					{
-						type: 'number',
-						id: 'speed',
-						label: 'Speed (1.0-7.0)',
-						min: 1,
-						max: 7,
-						step: 0.5,
-						default: 2,
-						isVisible: () => false,
-					},
-				],
+									],
 				async callback(action) {
 					// 2014-era MC2500 firmware: actZoom takes exactly 2 params
 					const r = await self.rpc('actZoom', [action.options.dir, action.options.state])
@@ -290,21 +280,21 @@ class SonyCamApi extends InstanceBase {
 
 		mk('zoom_in', 'Zoom in (hold)', 'ZOOM+', blue,
 			[{
-				down: [{ actionId: 'zoom', options: { dir: 'in', state: 'start', speed: 2 } }],
+				down: [{ actionId: 'zoom', options: { dir: 'in', state: 'start' } }],
 				up: [{ actionId: 'zoom', options: { dir: 'in', state: 'stop' } }],
 			}],
 			[])
 
 		mk('zoom_out', 'Zoom out (hold)', 'ZOOM-', blue,
 			[{
-				down: [{ actionId: 'zoom', options: { dir: 'out', state: 'start', speed: 1 } }],
+				down: [{ actionId: 'zoom', options: { dir: 'out', state: 'start' } }],
 				up: [{ actionId: 'zoom', options: { dir: 'out', state: 'stop' } }],
 			}],
 			[])
 
 		mk('zoom_in_fast', 'Zoom in fast (hold)', 'ZOOM ++', blue,
 			[{
-				down: [{ actionId: 'zoom', options: { dir: 'in', state: 'start', speed: 5 } }],
+				down: [{ actionId: 'zoom', options: { dir: 'in', state: 'start' } }],
 				up: [{ actionId: 'zoom', options: { dir: 'in', state: 'stop' } }],
 			}],
 			[])
