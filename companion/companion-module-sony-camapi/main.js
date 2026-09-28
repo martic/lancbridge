@@ -13,7 +13,7 @@ class SonyCamApi extends InstanceBase {
 		this._lastResult = {}
 	}
 
-	async configFields() {
+	getConfigFields() {
 		return [
 			{
 				type: 'textinput',
@@ -51,11 +51,6 @@ class SonyCamApi extends InstanceBase {
 
 	async destroy() {
 		if (this._pollTimer) clearInterval(this._pollTimer)
-	}
-
-	getConfigFields() {
-		// companion v1.x shim
-		return this.configFields ? undefined : undefined
 	}
 
 	rpc(method, params, version = '1.0') {
