@@ -86,8 +86,12 @@ class SonyCamApi extends InstanceBase {
 					})
 				}
 			)
-			req.on('error', (e) => resolve({ error: e.message }))
+			req.on('error', (e) => {
+				this.log('warn', method + ' transport error: ' + e.message)
+				resolve({ error: e.message })
+			})
 			req.on('timeout', () => req.destroy(new Error('timeout')))
+			this.log('debug', '-> ' + method + ' ' + full + ' ' + body)
 			req.write(body)
 			req.end()
 		})
@@ -134,6 +138,7 @@ class SonyCamApi extends InstanceBase {
 					// 2014-era MC2500 firmware: actZoom takes exactly 2 params
 					const r = await self.rpc('actZoom', [action.options.dir, action.options.state])
 					self._lastResult.zoom = r
+					self.log('info', 'actZoom(' + action.options.dir + ',' + action.options.state + ') -> ' + JSON.stringify(r))
 				},
 			},
 			rec: {
