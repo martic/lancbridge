@@ -246,22 +246,6 @@ class SonyCamApi extends InstanceBase {
 					self.checkFeedbacks('recording')
 				},
 			},
-			f_number: {
-				name: 'Set F-Number (aperture)',
-				options: [
-					{
-						type: 'textinput',
-						id: 'value',
-						label: 'F-number',
-						tooltip: 'Exact value as reported by getSupportedFNumber, e.g. F1.8',
-						default: 'F1.8',
-					},
-				],
-				async callback(action) {
-					const r = await self.rpc('setFNumber', [action.options.value])
-					self._lastResult.fNumber = r
-				},
-			},
 			method: {
 				name: 'Raw API Call',
 				options: [
@@ -334,10 +318,6 @@ class SonyCamApi extends InstanceBase {
 							'mode_movie',
 							'mode_still',
 							'liveview_toggle',
-							'fnum_18',
-							'fnum_28',
-							'fnum_40',
-							'fnum_auto',
 							'status_dump',
 							'raw_call',
 						],
@@ -439,21 +419,6 @@ class SonyCamApi extends InstanceBase {
 			}],
 		}
 
-		const fn = (id, label, value) => {
-			presets[id] = {
-				name: `F-number ${value}`,
-				type: 'simple',
-				keywords: ['sony', 'camera', 'aperture'],
-				style: { text: label, size: 'auto', color: combineRgb(255, 255, 255), bgcolor: grey },
-				steps: [{ down: [{ actionId: 'f_number', options: { value } }], up: [] }],
-				feedbacks: [],
-			}
-		}
-		fn('fnum_18', 'F1.8', 'F1.8')
-		fn('fnum_28', 'F2.8', 'F2.8')
-		fn('fnum_40', 'F4.0', 'F4.0')
-		fn('fnum_auto', 'F AUTO', 'auto')
-
 		presets['status_dump'] = {
 			name: 'Dump camera status to log',
 			type: 'simple',
@@ -511,6 +476,7 @@ class SonyCamApi extends InstanceBase {
 			liveview: { name: 'liveview', label: 'Liveview (true/false)' },
 			shoot_mode: { name: 'shoot_mode', label: 'Current shoot mode' },
 			f_number: { name: 'f_number', label: 'Current f-number' },
+			white_balance: { name: 'white_balance', label: 'White balance mode (from getEvent)' },
 			camera_status: { name: 'camera_status', label: 'Camera status (from getEvent)' },
 			storage_info: { name: 'storage_info', label: 'Storage summary' },
 			last_error: { name: 'last_error', label: 'Last API error' },
@@ -543,6 +509,7 @@ class SonyCamApi extends InstanceBase {
 					liveview: this._liveview ? 'true' : 'false',
 					shoot_mode: String(ev.currentShootMode ?? ev.shootMode ?? ''),
 					f_number: String(ev.currentFNumber ?? ''),
+					white_balance: String(ev.currentWhiteBalanceMode ?? ev.whiteBalance ?? ''),
 					camera_status: String(ev.cameraStatus ?? ''),
 					storage_info: storage,
 					last_error: '',
