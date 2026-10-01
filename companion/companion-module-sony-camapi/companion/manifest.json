@@ -17,6 +17,6 @@
 		"type": "node22",
 		"api": "nodejs-ipc",
 		"apiVersion": "1.12.1",
-		"entrypoint": "main.js"
+		"entrypoint": "../main.js"
 	}
 }
