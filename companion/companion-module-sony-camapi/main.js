@@ -44,7 +44,7 @@ class SonyCamApi extends InstanceBase {
 		this.setActionDefinitions(this.buildActions())
 		this.setFeedbackDefinitions(this.buildFeedbacks())
 		this.setVariableDefinitions(this.buildVariables())
-		this.setPresetDefinitions(this.buildPresetCategories(), this.buildPresets())
+		this.setPresetDefinitions(this.buildPresets())
 		this.updateStatus(InstanceStatus.Ok)
 		this.startPolling()
 	}
