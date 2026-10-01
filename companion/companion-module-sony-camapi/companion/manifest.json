@@ -4,7 +4,7 @@
 	"name": "sony-camapi",
 	"shortname": "Sony Cam",
 	"description": "Sony Camera Remote API (ScalarWebAPI v1) control — zoom, record, status for HXR/NXCAM cameras",
-	"version": "1.4.4",
+	"version": "1.4.5",
 	"license": "MIT",
 	"repository": "https://github.com/martin/lancbridge",
 	"bugs": "https://github.com/martin/lancbridge/issues",
