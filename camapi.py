@@ -162,6 +162,30 @@ def cmd_apis(base):
     print(f'HTTP {st}')
     print(json.dumps(resp, indent=2))
 
+def cmd_status(base):
+    """One-screen status summary from the getters this firmware actually has."""
+    rows = []
+    for meth, label in [('getVersions', 'firmware'), ('getApplicationInfo', 'app'),
+                        ('getShootMode', 'shoot mode'), ('getAvailableShootMode', 'shoot candidates'),
+                        ('getFNumber', 'f-number'), ('getAvailableFNumber', 'f-number candidates'),
+                        ('getTouchAFPosition', 'touch AF')]:
+        st, r = api_call(base, meth)
+        rows.append(f'{label:20s} HTTP {st}: {json.dumps(r.get("result", r.get("error")))}')
+    st, r = api_call(base, 'getEvent', [False], timeout=4)
+    if isinstance(r, dict) and isinstance(r.get('result'), list) and r['result']:
+        ev = r['result'][0] if isinstance(r['result'][0], dict) else {}
+        for k in ('cameraStatus', 'zoomInformation', 'liveviewStatus',
+                  'storageInformation', 'movieRecording', 'currentShootMode'):
+            if k in ev:
+                rows.append(f'event.{k:16s} {json.dumps(ev[k])}')
+    print('\n'.join(rows))
+
+def cmd_call(base, method, raw_params=None, version='1.0'):
+    """Generic passthrough: python3 camapi.py call <method> '["param1",...]'"""
+    params = json.loads(raw_params) if raw_params else []
+    st, r = api_call(base, method, params, version=version)
+    print(f'HTTP {st}: {json.dumps(r)}')
+
 def cmd_zoom(base, direction, state, speed=None):
     # 2014-era firmware (MC2500): exactly 2 params. Speed param only on newer fw.
     params = [direction, state]
@@ -208,6 +232,33 @@ def main():
         base = ensure_endpoint(base)
         if cmd == 'apis':
             cmd_apis(base)
+        elif cmd == 'status':
+            cmd_status(base)
+        elif cmd == 'call':
+            # call <method> ['["p1","p2"]'] [version]
+            cmd_call(base, rest[0],
+                     rest[1] if len(rest) > 1 else None,
+                     rest[2] if len(rest) > 2 else '1.0')
+        elif cmd == 'liveview':
+            cmd_call(base, 'startLiveview' if rest and rest[0] == 'start' else 'stopLiveview')
+        elif cmd == 'fnum':
+            # fnum <value>            -> setFNumber
+            # fnum get|avail|supported
+            sub = rest[0] if rest else 'get'
+            if sub in ('get', 'avail', 'supported'):
+                m = {'get': 'getFNumber', 'avail': 'getAvailableFNumber',
+                     'supported': 'getSupportedFNumber'}[sub]
+                cmd_call(base, m)
+            else:
+                cmd_call(base, 'setFNumber', json.dumps([sub]))
+        elif cmd == 'shootmode':
+            sub = rest[0] if rest else 'get'
+            if sub in ('get', 'avail', 'supported'):
+                m = {'get': 'getShootMode', 'avail': 'getAvailableShootMode',
+                     'supported': 'getSupportedShootMode'}[sub]
+                cmd_call(base, m)
+            else:
+                cmd_call(base, 'setShootMode', json.dumps([sub]))
         elif cmd == 'zoom':
             cmd_zoom(base, rest[0], rest[1], rest[2] if len(rest) > 2 else None)
         elif cmd == 'rec':

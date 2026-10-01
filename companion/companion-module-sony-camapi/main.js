@@ -187,10 +187,14 @@ class SonyCamApi extends InstanceBase {
 					},
 				],
 				async callback(action) {
-					const x = Math.round(action.options.x * 100)
-					const y = Math.round(action.options.y * 100)
+					// Sony expects coordinates in 0-100 units (getMethodTypes: ["double","double"])
+					const x = action.options.x
+					const y = action.options.y
 					const r = await self.rpc('setTouchAFPosition', [x, y])
 					self._lastResult.af = r
+					const afRes = r?.result?.[1]?.AFResult
+					this._afOk = afRes === true
+					if (afRes !== undefined) self.checkFeedbacks('af_result')
 				},
 			},
 			touch_af_cancel: {
@@ -201,23 +205,89 @@ class SonyCamApi extends InstanceBase {
 					self._lastResult.af = r
 				},
 			},
-			focus_mode: {
-				name: 'Set Focus Mode (camera/setFocusMode)',
+			liveview: {
+				name: 'Liveview Start/Stop',
+				options: [
+					{
+						type: 'dropdown',
+						id: 'action',
+						label: 'Action',
+						choices: [
+							{ id: 'start', label: 'Start' },
+							{ id: 'stop', label: 'Stop' },
+						],
+						default: 'start',
+					},
+				],
+				async callback(action) {
+					const m = action.options.action === 'start' ? 'startLiveview' : 'stopLiveview'
+					const r = await self.rpc(m)
+					self._lastResult.liveview = r
+				},
+			},
+			shoot_mode: {
+				name: 'Set Shoot Mode',
 				options: [
 					{
 						type: 'dropdown',
 						id: 'mode',
 						label: 'Mode',
+						// getAvailableShootMode on the MC2500 reports still/movie
 						choices: [
-							{ id: 'AF', label: 'AF (auto)' },
-							{ id: 'MF', label: 'MF (manual)' },
+							{ id: 'movie', label: 'Movie' },
+							{ id: 'still', label: 'Still' },
 						],
-						default: 'AF',
+						default: 'movie',
 					},
 				],
 				async callback(action) {
-					const r = await self.rpc('setFocusMode', [action.options.mode], '1.1')
-					self._lastResult.focusMode = r
+					const r = await self.rpc('setShootMode', [action.options.mode])
+					self._lastResult.shootMode = r
+					self.checkFeedbacks('recording')
+				},
+			},
+			f_number: {
+				name: 'Set F-Number (aperture)',
+				options: [
+					{
+						type: 'textinput',
+						id: 'value',
+						label: 'F-number',
+						tooltip: 'Exact value as reported by getSupportedFNumber, e.g. F1.8',
+						default: 'F1.8',
+					},
+				],
+				async callback(action) {
+					const r = await self.rpc('setFNumber', [action.options.value])
+					self._lastResult.fNumber = r
+				},
+			},
+			method: {
+				name: 'Raw API Call',
+				options: [
+					{
+						type: 'textinput',
+						id: 'method',
+						label: 'Method name',
+						default: 'getVersions',
+					},
+					{
+						type: 'textinput',
+						id: 'params',
+						label: 'Params (JSON array)',
+						default: '[]',
+					},
+				],
+				async callback(action) {
+					let params = []
+					try {
+						params = JSON.parse(action.options.params || '[]')
+					} catch {
+						params = []
+					}
+					const r = await self.rpc(action.options.method, params)
+					self._lastResult.raw = r
+					self.log('info', action.options.method + ' -> ' + JSON.stringify(r))
 				},
 			},
 			apis: {
@@ -332,9 +402,25 @@ class SonyCamApi extends InstanceBase {
 				name: 'Recording state',
 				type: 'boolean',
 				description: 'Camera is currently recording',
-				defaultStyle: { bgcolor: 0xff0000, fgcolor: 0xffffff },
+				defaultStyle: { bgcolor: combineRgb(255, 0, 0), fgcolor: combineRgb(255, 255, 255) },
 				options: [],
 				callback: () => this._recording === true,
+			},
+			liveview_on: {
+				name: 'Liveview active',
+				type: 'boolean',
+				description: 'Camera liveview stream is running',
+				defaultStyle: { bgcolor: combineRgb(30, 120, 30), fgcolor: combineRgb(255, 255, 255) },
+				options: [],
+				callback: () => this._liveview === true,
+			},
+			af_result: {
+				name: 'Touch AF result',
+				type: 'boolean',
+				description: 'Last touch-AF attempt succeeded',
+				defaultStyle: { bgcolor: combineRgb(30, 120, 30), fgcolor: combineRgb(255, 255, 255) },
+				options: [],
+				callback: () => this._afOk === true,
 			},
 		}
 	}
@@ -343,6 +429,11 @@ class SonyCamApi extends InstanceBase {
 		return {
 			zoom_position: { name: 'zoom_position', label: 'Zoom position (index)' },
 			recording: { name: 'recording', label: 'Recording (true/false)' },
+			liveview: { name: 'liveview', label: 'Liveview (true/false)' },
+			shoot_mode: { name: 'shoot_mode', label: 'Current shoot mode' },
+			f_number: { name: 'f_number', label: 'Current f-number' },
+			camera_status: { name: 'camera_status', label: 'Camera status (from getEvent)' },
+			storage_info: { name: 'storage_info', label: 'Storage summary' },
 			last_error: { name: 'last_error', label: 'Last API error' },
 		}
 	}
@@ -361,12 +452,23 @@ class SonyCamApi extends InstanceBase {
 					ev.cameraFunction === 'Movie' ||
 					ev.status === 'recording'
 				this._recording = recording
+				this._liveview = ev.liveviewStatus === true
+				const storage = Array.isArray(ev.storageInformation)
+					? ev.storageInformation
+							.map((s) => `${s.storageDescription || s.storageID}: ${s.recordableTime ?? '?'}s`)
+							.join(' | ')
+					: ''
 				this.setVariableValues({
 					zoom_position: String(pos),
 					recording: recording ? 'true' : 'false',
+					liveview: this._liveview ? 'true' : 'false',
+					shoot_mode: String(ev.currentShootMode ?? ev.shootMode ?? ''),
+					f_number: String(ev.currentFNumber ?? ''),
+					camera_status: String(ev.cameraStatus ?? ''),
+					storage_info: storage,
 					last_error: '',
 				})
-				this.checkFeedbacks('recording')
+				this.checkFeedbacks('recording', 'liveview_on', 'af_result')
 			} else if (r?.error) {
 				this.setVariableValues({ last_error: String(r.error) })
 			}
