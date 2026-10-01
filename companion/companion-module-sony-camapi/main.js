@@ -325,6 +325,23 @@ class SonyCamApi extends InstanceBase {
 							'af_cancel',
 						],
 					},
+					{
+						id: 'sony_cam_modes',
+						type: 'simple',
+						name: 'Camera modes & status',
+						description: 'Shoot mode, liveview, aperture, raw call',
+						presets: [
+							'mode_movie',
+							'mode_still',
+							'liveview_toggle',
+							'fnum_18',
+							'fnum_28',
+							'fnum_40',
+							'fnum_auto',
+							'status_dump',
+							'raw_call',
+						],
+					},
 				],
 			},
 		]
@@ -389,9 +406,71 @@ class SonyCamApi extends InstanceBase {
 			[{ down: [{ actionId: 'touch_af', options: { x: 50, y: 65 } }], up: [] }],
 			[])
 
-		mk('af_cancel', 'AF cancel (back to wide AF)', 'AF\nWIDE', grey,
+		mk('af_cancel', 'AF cancel (back to wide AF)', 'AF\\nWIDE', grey,
 			[{ down: [{ actionId: 'touch_af_cancel', options: {} }], up: [] }],
 			[])
+
+		// --- modes & status presets ---
+		mk('mode_movie', 'Shoot mode: Movie', 'MODE\\nMOVIE', blue,
+			[{ down: [{ actionId: 'shoot_mode', options: { mode: 'movie' } }], up: [] }],
+			[])
+
+		mk('mode_still', 'Shoot mode: Still', 'MODE\\nSTILL', blue,
+			[{ down: [{ actionId: 'shoot_mode', options: { mode: 'still' } }], up: [] }],
+			[])
+
+		presets['liveview_toggle'] = {
+			name: 'Liveview start/stop (shows live state)',
+			type: 'simple',
+			keywords: ['sony', 'camera', 'liveview'],
+			style: { text: 'LV', size: 'auto', color: combineRgb(255, 255, 255), bgcolor: grey },
+			steps: [{
+				down: [
+					{ actionId: 'liveview', options: { action: 'start' } },
+				],
+				up: [
+					{ actionId: 'liveview', options: { action: 'stop' } },
+				],
+			}],
+			feedbacks: [{
+				feedbackId: 'liveview_on',
+				options: {},
+				style: { bgcolor: combineRgb(30, 120, 30), color: combineRgb(255, 255, 255) },
+			}],
+		}
+
+		const fn = (id, label, value) => {
+			presets[id] = {
+				name: `F-number ${value}`,
+				type: 'simple',
+				keywords: ['sony', 'camera', 'aperture'],
+				style: { text: label, size: 'auto', color: combineRgb(255, 255, 255), bgcolor: grey },
+				steps: [{ down: [{ actionId: 'f_number', options: { value } }], up: [] }],
+				feedbacks: [],
+			}
+		}
+		fn('fnum_18', 'F1.8', 'F1.8')
+		fn('fnum_28', 'F2.8', 'F2.8')
+		fn('fnum_40', 'F4.0', 'F4.0')
+		fn('fnum_auto', 'F AUTO', 'auto')
+
+		presets['status_dump'] = {
+			name: 'Dump camera status to log',
+			type: 'simple',
+			keywords: ['sony', 'camera', 'status'],
+			style: { text: 'STATUS', size: 'auto', color: combineRgb(255, 255, 255), bgcolor: grey },
+			steps: [{ down: [{ actionId: 'apis', options: {} }], up: [] }],
+			feedbacks: [],
+		}
+
+		presets['raw_call'] = {
+			name: 'Raw API call (configure in editor)',
+			type: 'simple',
+			keywords: ['sony', 'camera', 'api'],
+			style: { text: 'API', size: 'auto', color: combineRgb(255, 255, 255), bgcolor: grey },
+			steps: [{ down: [{ actionId: 'method', options: { method: 'getVersions', params: '[]' } }], up: [] }],
+			feedbacks: [],
+		}
 
 		return presets
 	}
