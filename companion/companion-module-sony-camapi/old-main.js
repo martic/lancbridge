@@ -11,7 +11,6 @@ class SonyCamApi extends InstanceBase {
 		super(internal)
 		this._pollTimer = null
 		this._lastResult = {}
-		this._apiOk = false
 	}
 
 	getConfigFields() {
@@ -79,19 +78,16 @@ class SonyCamApi extends InstanceBase {
 					let data = ''
 					res.on('data', (c) => (data += c))
 					res.on('end', () => {
-										try {
-											const parsed = JSON.parse(data)
-											this._apiOk = true
-											resolve(parsed)
-										} catch {
-											resolve({ error: 'bad json', raw: data })
-										}
-									})
+						try {
+							resolve(JSON.parse(data))
+						} catch {
+							resolve({ error: 'bad json', raw: data })
+						}
+					})
 				}
 			)
 			req.on('error', (e) => {
 				this.log('warn', method + ' transport error: ' + e.message)
-				this._apiOk = false
 				resolve({ error: e.message })
 			})
 			req.on('timeout', () => req.destroy(new Error('timeout')))
@@ -250,6 +246,22 @@ class SonyCamApi extends InstanceBase {
 					self.checkFeedbacks('recording')
 				},
 			},
+			f_number: {
+				name: 'Set F-Number (aperture)',
+				options: [
+					{
+						type: 'textinput',
+						id: 'value',
+						label: 'F-number',
+						tooltip: 'Exact value as reported by getSupportedFNumber, e.g. F1.8',
+						default: 'F1.8',
+					},
+				],
+				async callback(action) {
+					const r = await self.rpc('setFNumber', [action.options.value])
+					self._lastResult.fNumber = r
+				},
+			},
 			method: {
 				name: 'Raw API Call',
 				options: [
@@ -313,19 +325,6 @@ class SonyCamApi extends InstanceBase {
 							'af_cancel',
 						],
 					},
-					{
-						id: 'sony_cam_modes',
-						type: 'simple',
-						name: 'Camera modes & status',
-						description: 'Shoot mode, liveview, aperture, raw call',
-						presets: [
-							'mode_movie',
-							'mode_still',
-							'liveview_toggle',
-							'status_dump',
-							'raw_call',
-						],
-					},
 				],
 			},
 		]
@@ -340,14 +339,7 @@ class SonyCamApi extends InstanceBase {
 				keywords: ['sony', 'camera', 'zoom'],
 				style: { text, size: 'auto', color: combineRgb(255, 255, 255), bgcolor },
 				steps,
-				feedbacks: [
-					...feedbacks,
-					{
-						feedbackId: 'api_offline',
-						options: {},
-						style: { bgcolor: combineRgb(255, 80, 0), color: combineRgb(255, 255, 255) },
-					},
-				],
+				feedbacks,
 			}
 		}
 
@@ -397,60 +389,9 @@ class SonyCamApi extends InstanceBase {
 			[{ down: [{ actionId: 'touch_af', options: { x: 50, y: 65 } }], up: [] }],
 			[])
 
-		mk('af_cancel', 'AF cancel (back to wide AF)', 'AF\\nWIDE', grey,
+		mk('af_cancel', 'AF cancel (back to wide AF)', 'AF\nWIDE', grey,
 			[{ down: [{ actionId: 'touch_af_cancel', options: {} }], up: [] }],
 			[])
-
-		// --- modes & status presets ---
-		mk('mode_movie', 'Shoot mode: Movie', 'MODE\\nMOVIE', blue,
-			[{ down: [{ actionId: 'shoot_mode', options: { mode: 'movie' } }], up: [] }],
-			[])
-
-		mk('mode_still', 'Shoot mode: Still', 'MODE\\nSTILL', blue,
-			[{ down: [{ actionId: 'shoot_mode', options: { mode: 'still' } }], up: [] }],
-			[])
-
-		presets['liveview_toggle'] = {
-			name: 'Liveview start/stop (shows live state)',
-			type: 'simple',
-			keywords: ['sony', 'camera', 'liveview'],
-			style: { text: 'LV', size: 'auto', color: combineRgb(255, 255, 255), bgcolor: grey },
-			steps: [{
-				down: [
-					{ actionId: 'liveview', options: { action: 'start' } },
-				],
-				up: [
-					{ actionId: 'liveview', options: { action: 'stop' } },
-				],
-			}],
-			feedbacks: [{
-				feedbackId: 'liveview_on',
-				options: {},
-				style: { bgcolor: combineRgb(30, 120, 30), color: combineRgb(255, 255, 255) },
-			},{
-				feedbackId: 'api_offline',
-				options: {},
-				style: { bgcolor: combineRgb(255, 80, 0), color: combineRgb(255, 255, 255) },
-			}],
-		}
-
-		presets['status_dump'] = {
-			name: 'Dump camera status to log',
-			type: 'simple',
-			keywords: ['sony', 'camera', 'status'],
-			style: { text: 'STATUS', size: 'auto', color: combineRgb(255, 255, 255), bgcolor: grey },
-			steps: [{ down: [{ actionId: 'apis', options: {} }], up: [] }],
-			feedbacks: [],
-		}
-
-		presets['raw_call'] = {
-			name: 'Raw API call (configure in editor)',
-			type: 'simple',
-			keywords: ['sony', 'camera', 'api'],
-			style: { text: 'API', size: 'auto', color: combineRgb(255, 255, 255), bgcolor: grey },
-			steps: [{ down: [{ actionId: 'method', options: { method: 'getVersions', params: '[]' } }], up: [] }],
-			feedbacks: [],
-		}
 
 		return presets
 	}
@@ -481,14 +422,6 @@ class SonyCamApi extends InstanceBase {
 				options: [],
 				callback: () => this._afOk === true,
 			},
-			api_offline: {
-				name: 'API offline (camera WiFi off?)',
-				type: 'boolean',
-				description: 'Lights up when the camera API is unreachable — check the camera menu WiFi is on',
-				defaultStyle: { bgcolor: combineRgb(255, 80, 0), fgcolor: combineRgb(255, 255, 255) },
-				options: [],
-				callback: () => this._apiOk !== true,
-			},
 		}
 	}
 
@@ -499,11 +432,9 @@ class SonyCamApi extends InstanceBase {
 			liveview: { name: 'liveview', label: 'Liveview (true/false)' },
 			shoot_mode: { name: 'shoot_mode', label: 'Current shoot mode' },
 			f_number: { name: 'f_number', label: 'Current f-number' },
-			white_balance: { name: 'white_balance', label: 'White balance mode (from getEvent)' },
 			camera_status: { name: 'camera_status', label: 'Camera status (from getEvent)' },
 			storage_info: { name: 'storage_info', label: 'Storage summary' },
 			last_error: { name: 'last_error', label: 'Last API error' },
-			api_status: { name: 'api_status', label: 'API reachability (online/offline)' },
 		}
 	}
 
@@ -533,16 +464,13 @@ class SonyCamApi extends InstanceBase {
 					liveview: this._liveview ? 'true' : 'false',
 					shoot_mode: String(ev.currentShootMode ?? ev.shootMode ?? ''),
 					f_number: String(ev.currentFNumber ?? ''),
-					white_balance: String(ev.currentWhiteBalanceMode ?? ev.whiteBalance ?? ''),
 					camera_status: String(ev.cameraStatus ?? ''),
 					storage_info: storage,
 					last_error: '',
-					api_status: 'online',
 				})
-				this.checkFeedbacks('recording', 'liveview_on', 'af_result', 'api_offline')
+				this.checkFeedbacks('recording', 'liveview_on', 'af_result')
 			} else if (r?.error) {
-				this.setVariableValues({ last_error: String(r.error), api_status: 'offline' })
-				this.checkFeedbacks('api_offline')
+				this.setVariableValues({ last_error: String(r.error) })
 			}
 		}, 1000)
 	}
