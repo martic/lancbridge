@@ -505,16 +505,16 @@ class SonyCamApi extends InstanceBase {
 	}
 
 	buildVariables() {
-		return {
-			zoom_position: { name: 'zoom_position', label: 'Zoom position (index)' },
-			recording: { name: 'recording', label: 'Recording (true/false)' },
-			liveview: { name: 'liveview', label: 'Liveview (true/false)' },
-			shoot_mode: { name: 'shoot_mode', label: 'Current shoot mode' },
-			f_number: { name: 'f_number', label: 'Current f-number' },
-			camera_status: { name: 'camera_status', label: 'Camera status (from getEvent)' },
-			storage_info: { name: 'storage_info', label: 'Storage summary' },
-			last_error: { name: 'last_error', label: 'Last API error' },
-		}
+		return [
+			{ variableId: 'zoom_position', name: 'Zoom position (index)' },
+			{ variableId: 'recording', name: 'Recording (true/false)' },
+			{ variableId: 'liveview', name: 'Liveview (true/false)' },
+			{ variableId: 'shoot_mode', name: 'Current shoot mode' },
+			{ variableId: 'f_number', name: 'Current f-number' },
+			{ variableId: 'camera_status', name: 'Camera status (from getEvent)' },
+			{ variableId: 'storage_info', name: 'Storage summary' },
+			{ variableId: 'last_error', name: 'Last API error' },
+		]
 	}
 
 	startPolling() {
